@@ -1,3 +1,5 @@
+// ignore_for_file: prefer_const_declarations
+
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
@@ -242,6 +244,14 @@ class _TurntableDeckState extends State<TurntableDeck>
       }
 
       if (provider != null) {
+        // Remove any previous stream listener so we don't leak and so failures
+        // don't keep a stale listener around.
+        if (_imageListener != null && _imageStream != null) {
+          _imageStream!.removeListener(_imageListener!);
+          _imageListener = null;
+          _imageStream = null;
+        }
+
         final oldStream = _imageStream;
         _imageStream = provider.resolve(imageConfig);
 
@@ -258,6 +268,11 @@ class _TurntableDeckState extends State<TurntableDeck>
             },
             onError: (exception, stackTrace) {
               debugPrint('Error loading label image: $exception');
+              // IMPORTANT: If image load fails, fall back to a generated label
+              // so the record never appears blank.
+              if (!mounted) return;
+              setState(() => _labelImage = null);
+              unawaited(_updateGeneratedLabelImage(targetSize: targetSize));
             },
           );
           _imageListener = listener;
@@ -310,21 +325,21 @@ class _TurntableDeckState extends State<TurntableDeck>
     final rand = Random(seed);
 
     final hsl = HSLColor.fromColor(accent);
-    final bg =
-        hsl
-            .withSaturation((hsl.saturation * 0.18).clamp(0.0, 1.0))
-            .withLightness((hsl.lightness * 0.78).clamp(0.0, 1.0))
-            .toColor();
-    final ring1 =
-        hsl
-            .withSaturation((hsl.saturation * 0.28).clamp(0.0, 1.0))
-            .withLightness((hsl.lightness * 0.62).clamp(0.0, 1.0))
-            .toColor();
-    final ring2 =
-        hsl
-            .withSaturation((hsl.saturation * 0.22).clamp(0.0, 1.0))
-            .withLightness((hsl.lightness * 0.52).clamp(0.0, 1.0))
-            .toColor();
+    // Prevent the generated label from becoming too light when accent is bright.
+    final labelBaseLight = min(hsl.lightness, 0.65);
+    final labelBaseSat = hsl.saturation;
+    final bg = hsl
+      .withSaturation((labelBaseSat * 0.18).clamp(0.0, 1.0))
+      .withLightness((labelBaseLight * 0.80).clamp(0.0, 1.0))
+      .toColor();
+    final ring1 = hsl
+      .withSaturation((labelBaseSat * 0.28).clamp(0.0, 1.0))
+      .withLightness((labelBaseLight * 0.62).clamp(0.0, 1.0))
+      .toColor();
+    final ring2 = hsl
+      .withSaturation((labelBaseSat * 0.22).clamp(0.0, 1.0))
+      .withLightness((labelBaseLight * 0.52).clamp(0.0, 1.0))
+      .toColor();
 
     c.drawCircle(center, r, Paint()..color = bg);
 
@@ -1060,11 +1075,44 @@ class _TurntableDeckState extends State<TurntableDeck>
     super.dispose();
   }
 
+  Color _resolveThemeAccent(Color accent) {
+    final mode = SettingsService.instance.themeMode;
+    if (mode == SettingsService.themeNeon) {
+      final hsl = HSLColor.fromColor(accent);
+      return hsl
+          .withHue((hsl.hue + 210) % 360)
+          .withSaturation(1.0)
+          .withLightness((hsl.lightness * 0.95).clamp(0.35, 0.75))
+          .toColor();
+    }
+    if (mode == SettingsService.themeAlbumArt) {
+      final key = widget.item?.id ?? widget.item?.title ?? widget.item?.artUri?.toString() ?? accent.toString();
+      final rnd = Random(key.hashCode);
+      return HSLColor.fromAHSL(
+        1.0,
+        rnd.nextDouble() * 360,
+        0.70 + rnd.nextDouble() * 0.18,
+        0.42 + rnd.nextDouble() * 0.12,
+      ).toColor();
+    }
+    return accent;
+  }
+
+  Color _neutralizeTurntableAccent(Color accent) {
+    final hsl = HSLColor.fromColor(accent);
+    return hsl
+        .withSaturation((hsl.saturation * 0.28).clamp(0.0, 1.0))
+        .withLightness((hsl.lightness * 0.74 + 0.16).clamp(0.0, 1.0))
+        .toColor();
+  }
+
   @override
   Widget build(BuildContext context) {
     final player = widget.ctrl.player;
     final settings = SettingsService.instance;
-    final accentColor = Color(settings.accentColor);
+    final accentColor = _neutralizeTurntableAccent(
+      _resolveThemeAccent(Color(settings.accentColor)),
+    );
 
     final disableAnimations =
         MediaQuery.of(context).disableAnimations ||
@@ -1092,7 +1140,7 @@ class _TurntableDeckState extends State<TurntableDeck>
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final size = min(constraints.maxWidth, constraints.maxHeight) * 0.95;
+        final size = min(constraints.maxWidth, constraints.maxHeight) * 1.0;
 
         if (perfTier == 2) {
           _ensureDustTexture(
@@ -1237,6 +1285,7 @@ class _TurntableBasePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
+    final isWindows = Platform.isWindows;
 
     // 1. PLINTH (Main Chassis)
     final plinthRect = Rect.fromLTWH(w * 0.02, h * 0.02, w * 0.96, h * 0.96);
@@ -1253,22 +1302,10 @@ class _TurntableBasePainter extends CustomPainter {
     ); // Slightly up-left to make room
 
     // Accent-driven "metallic paint" (Coruscant-inspired): deep base + brighter edge + subtle flake.
-    final hsl = HSLColor.fromColor(accentColor);
-    final c1 =
-        hsl
-            .withLightness((hsl.lightness * 1.08).clamp(0.0, 1.0))
-            .withSaturation((hsl.saturation * 0.95).clamp(0.0, 1.0))
-            .toColor();
-    final c2 =
-        hsl
-            .withLightness((hsl.lightness * 0.62).clamp(0.0, 1.0))
-            .withSaturation((hsl.saturation * 1.00).clamp(0.0, 1.0))
-            .toColor();
-    final c3 =
-        hsl
-            .withLightness((hsl.lightness * 0.42).clamp(0.0, 1.0))
-            .withSaturation((hsl.saturation * 1.05).clamp(0.0, 1.0))
-            .toColor();
+    // Fixed colors to avoid magenta glow
+    final c1 = const Color(0xFF2A2A2A);
+    final c2 = const Color(0xFF1A1A1A);
+    final c3 = const Color(0xFF0F0F0F);
 
     final plinthPaint =
         Paint()
@@ -1280,6 +1317,26 @@ class _TurntableBasePainter extends CustomPainter {
           );
     canvas.drawRRect(plinthRRect, plinthPaint);
 
+    // Clearcoat edge highlight (reads more premium on desktop).
+    if (isWindows) {
+      canvas.drawRRect(
+        plinthRRect,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = w * 0.0035
+          ..shader = ui.Gradient.linear(
+            plinthRect.topLeft,
+            plinthRect.bottomRight,
+            [
+              Colors.white.withValues(alpha: 0.14),
+              Colors.transparent,
+              Colors.black.withValues(alpha: 0.20),
+            ],
+            [0.0, 0.55, 1.0],
+          ),
+      );
+    }
+
     // Wood Grain
     canvas.save();
     canvas.clipRRect(plinthRRect);
@@ -1287,10 +1344,10 @@ class _TurntableBasePainter extends CustomPainter {
         Paint()
           ..color = Colors.black.withValues(alpha: 0.1)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.0;
+          ..strokeWidth = isWindows ? 1.4 : 2.0;
 
     final rand = Random(42);
-    for (double i = 0; i < w * 1.5; i += w * 0.02) {
+    for (double i = 0; i < w * 1.5; i += w * (isWindows ? 0.014 : 0.02)) {
       final path = Path();
       path.moveTo(i, 0);
       path.cubicTo(
@@ -1309,16 +1366,14 @@ class _TurntableBasePainter extends CustomPainter {
     canvas.save();
     canvas.clipRRect(plinthRRect);
     final flakeRand = Random(4242);
-    for (int i = 0; i < 900; i++) {
+    final flakeCount = isWindows ? 2400 : 900;
+    for (int i = 0; i < flakeCount; i++) {
       final t = flakeRand.nextDouble();
-      final flakeColor = Color.lerp(
-        Colors.white,
-        accentColor,
-        t,
-      )!.withValues(alpha: 0.04 + (t * 0.05));
+      final flakeColor = Colors.white.withValues(alpha: 0.04 + (t * 0.05));
       canvas.drawCircle(
         Offset(flakeRand.nextDouble() * w, flakeRand.nextDouble() * h),
-        0.4 + flakeRand.nextDouble() * 0.6,
+        (isWindows ? 0.28 : 0.4) +
+            flakeRand.nextDouble() * (isWindows ? 0.55 : 0.6),
         Paint()..color = flakeColor,
       );
     }
@@ -1347,6 +1402,53 @@ class _TurntableBasePainter extends CustomPainter {
       ),
       Paint()..color = const Color(0xFF000000),
     );
+
+    // Perforated grill detail (static; safe to be a bit heavier).
+    final grillInner = speakerRect.deflate(w * 0.018);
+    canvas.save();
+    canvas.clipRRect(
+      RRect.fromRectAndRadius(grillInner, Radius.circular(w * 0.014)),
+    );
+    canvas.drawRect(
+      grillInner,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          grillInner.center,
+          grillInner.shortestSide * 0.65,
+          [const Color(0xFF0A0A0A), const Color(0xFF000000)],
+          [0.0, 1.0],
+        ),
+    );
+
+    final holeSpacing = w * (isWindows ? 0.013 : 0.016);
+    final holeR = w * (isWindows ? 0.0032 : 0.0038);
+    final holePaint = Paint()..color = const Color(0xFF000000);
+    final holeHighlight =
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.05)
+          ..blendMode = BlendMode.plus;
+
+    final cx = grillInner.center.dx;
+    final cy = grillInner.center.dy;
+    final maxR = grillInner.shortestSide * 0.48;
+    for (double y = grillInner.top; y <= grillInner.bottom; y += holeSpacing) {
+      for (
+        double x = grillInner.left;
+        x <= grillInner.right;
+        x += holeSpacing
+      ) {
+        final p = Offset(x, y);
+        if ((p - Offset(cx, cy)).distance > maxR) continue;
+        canvas.drawCircle(p, holeR, holePaint);
+        // tiny bevel highlight (top-left) makes it read like punched metal.
+        canvas.drawCircle(
+          p.translate(-holeR * 0.35, -holeR * 0.35),
+          holeR * 0.55,
+          holeHighlight,
+        );
+      }
+    }
+    canvas.restore();
 
     // 3. TONEARM BASE PLATE (Right Side)
     final basePlateRect = Rect.fromCenter(
@@ -1575,6 +1677,14 @@ class _TurntableSpinnerPainter extends CustomPainter {
     final minimal = tier >= 1;
     final full = tier >= 2 && !lowPerformanceMode;
 
+    final isWindows = Platform.isWindows;
+    final dpr =
+        ui.PlatformDispatcher.instance.views.isNotEmpty
+            ? ui.PlatformDispatcher.instance.views.first.devicePixelRatio
+            : 1.0;
+    final hq = isWindows && full;
+    final blurMul = hq ? (0.80 / max(1.0, dpr)).clamp(0.55, 0.90) : 1.0;
+
     // Layout Constants - MUST MATCH BASE PAINTER
     final platterRadius = w * 0.33;
     final platterCenter = Offset(w * 0.42, h * 0.45);
@@ -1651,7 +1761,9 @@ class _TurntableSpinnerPainter extends CustomPainter {
       Paint()
         ..color = Colors.black.withValues(alpha: 0.26)
         ..maskFilter =
-            full ? MaskFilter.blur(BlurStyle.normal, w * 0.006) : null,
+            full
+                ? MaskFilter.blur(BlurStyle.normal, w * 0.006 * blurMul)
+                : null,
     );
     canvas.drawCircle(
       platterCenter,
@@ -1686,12 +1798,15 @@ class _TurntableSpinnerPainter extends CustomPainter {
     // Grooves - Full tier only (subtle)
     if (full) {
       final grooveRange = recordR * 0.95 - recordR * 0.35;
-      final grooveSteps = (grooveRange / 2).floor();
+      final grooveStep = hq ? 1.25 : 2.0;
+      final grooveSteps = (grooveRange / grooveStep).floor();
       for (int i = 0; i < grooveSteps; i++) {
-        final r = recordR * 0.35 + i * 2.0;
+        final r = recordR * 0.35 + i * grooveStep;
         final grooveAlpha =
-            0.02 + groovePulse * 0.05 * (1 - i / max(1, grooveSteps));
-        final grooveWidth = 0.35 + groovePulse * 0.25;
+            (hq ? 0.013 : 0.02) +
+            groovePulse * (hq ? 0.04 : 0.05) * (1 - i / max(1, grooveSteps));
+        final grooveWidth =
+            (hq ? 0.22 : 0.35) + groovePulse * (hq ? 0.16 : 0.25);
         canvas.drawCircle(
           platterCenter,
           r,
@@ -1699,6 +1814,33 @@ class _TurntableSpinnerPainter extends CustomPainter {
             ..style = PaintingStyle.stroke
             ..strokeWidth = grooveWidth
             ..color = Colors.white.withValues(alpha: grooveAlpha * 0.55),
+        );
+      }
+    }
+
+    // Micro-scratches / micro-variation (Windows UHD only).
+    if (hq) {
+      final rand = Random(421);
+      final scratchPaint =
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeCap = StrokeCap.round;
+      const scratchCount = 56;
+      for (int i = 0; i < scratchCount; i++) {
+        final r = recordR * (0.44 + rand.nextDouble() * 0.50);
+        final start = rand.nextDouble() * pi * 2;
+        final sweep =
+            (0.05 + rand.nextDouble() * 0.14) * (rand.nextBool() ? 1.0 : -1.0);
+        final alpha = 0.010 + rand.nextDouble() * 0.014;
+        scratchPaint
+          ..strokeWidth = w * (0.00055 + rand.nextDouble() * 0.00070)
+          ..color = Colors.white.withValues(alpha: alpha);
+        canvas.drawArc(
+          Rect.fromCircle(center: platterCenter, radius: r),
+          start,
+          sweep,
+          false,
+          scratchPaint,
         );
       }
     }
@@ -1722,7 +1864,7 @@ class _TurntableSpinnerPainter extends CustomPainter {
         src,
         dst,
         Paint()
-          ..filterQuality = FilterQuality.low
+          ..filterQuality = hq ? FilterQuality.high : FilterQuality.low
           ..blendMode = BlendMode.srcOver
           ..colorFilter = ColorFilter.mode(
             Colors.white.withValues(alpha: 0.10),

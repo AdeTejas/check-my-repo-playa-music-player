@@ -149,7 +149,7 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
           Switch(
             value: _isEnabled,
             onChanged: _isInitialized ? (_) => _toggleEnabled() : null,
-            activeColor: accentColor,
+            activeThumbColor: accentColor,
           ),
         ],
       ),

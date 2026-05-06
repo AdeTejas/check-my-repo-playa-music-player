@@ -1,6 +1,9 @@
+// ignore_for_file: prefer_const_constructors
+
 import 'dart:math';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -28,15 +31,81 @@ class _DeepSpaceBackgroundState extends State<DeepSpaceBackground>
   final List<_ShootingStar> _shootingStars = [];
   final Random _rnd = Random();
   Size? _lastSize;
+  double? _lastDpr;
 
   // Nebula clouds
   final List<Offset> _nebulaCenters = [];
   final List<Offset> _nebulaVels = [];
   final List<bool> _nebulaEnabled = [];
   final List<Color> _nebulaColors = [];
+  final List<_NebulaSpeck> _nebulaSpecks = [];
 
   Duration _lastElapsed = Duration.zero;
   double _timeSeconds = 0.0;
+
+  Color _randomNebulaColor({required bool isWindows}) {
+    final r = _rnd.nextDouble();
+    // Windows UHD mode: broader gamut + more variety.
+    if (isWindows) {
+      if (r < 0.55) {
+        // Teal/blue ionized gas
+        final hue = 175.0 + _rnd.nextDouble() * 85.0;
+        return HSVColor.fromAHSV(
+          0.34,
+          hue,
+          0.72 + _rnd.nextDouble() * 0.18,
+          0.55 + _rnd.nextDouble() * 0.20,
+        ).toColor();
+      }
+      if (r < 0.80) {
+        // Magenta/purple dust
+        final hue = 265.0 + _rnd.nextDouble() * 60.0;
+        return HSVColor.fromAHSV(
+          0.30,
+          hue,
+          0.72 + _rnd.nextDouble() * 0.20,
+          0.50 + _rnd.nextDouble() * 0.22,
+        ).toColor();
+      }
+      // Rare warm tint
+      final hue = 25.0 + _rnd.nextDouble() * 35.0;
+      return HSVColor.fromAHSV(
+        0.22,
+        hue,
+        0.55 + _rnd.nextDouble() * 0.20,
+        0.50 + _rnd.nextDouble() * 0.18,
+      ).toColor();
+    }
+
+    // Default palette (kept closer to previous look)
+    return HSVColor.fromAHSV(
+      0.30,
+      195.0 + _rnd.nextDouble() * 90,
+      0.68,
+      0.55,
+    ).toColor();
+  }
+
+  void _initNebulaSpecks({required bool isWindows}) {
+    _nebulaSpecks.clear();
+    if (!isWindows) return;
+
+    final r = Random(0xBADC0DE);
+    // Lightweight static texture layer that reads like gaseous detail.
+    for (int i = 0; i < 2200; i++) {
+      final t = r.nextDouble();
+      final hue = (180.0 + r.nextDouble() * 160.0) % 360.0;
+      _nebulaSpecks.add(
+        _NebulaSpeck(
+          x: r.nextDouble(),
+          y: r.nextDouble(),
+          radius: 0.35 + pow(r.nextDouble(), 2.4).toDouble() * 1.15,
+          alpha: 0.010 + t * 0.020,
+          color: HSVColor.fromAHSV(1.0, hue, 0.22 + t * 0.25, 1.0).toColor(),
+        ),
+      );
+    }
+  }
 
   @override
   void initState() {
@@ -44,6 +113,9 @@ class _DeepSpaceBackgroundState extends State<DeepSpaceBackground>
     _ticker = createTicker(_onTick)..start();
 
     if (widget.mode == DeepSpaceMode.background) {
+      final isWindows =
+          !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
       // Init nebula clouds
       for (int i = 0; i < 4; i++) {
         _nebulaCenters.add(Offset(_rnd.nextDouble(), _rnd.nextDouble()));
@@ -51,15 +123,10 @@ class _DeepSpaceBackgroundState extends State<DeepSpaceBackground>
         final sp = 0.0015 + _rnd.nextDouble() * 0.0028;
         _nebulaVels.add(Offset(cos(ang) * sp, sin(ang) * sp));
         _nebulaEnabled.add(_rnd.nextDouble() < 0.35); // ~65% rarer
-        _nebulaColors.add(
-          HSVColor.fromAHSV(
-            0.30,
-            195.0 + _rnd.nextDouble() * 90,
-            0.68,
-            0.55,
-          ).toColor(),
-        );
+        _nebulaColors.add(_randomNebulaColor(isWindows: isWindows));
       }
+
+      _initNebulaSpecks(isWindows: isWindows);
 
       if (_nebulaEnabled.every((e) => !e) && _nebulaEnabled.isNotEmpty) {
         _nebulaEnabled[_rnd.nextInt(_nebulaEnabled.length)] = true;
@@ -77,9 +144,19 @@ class _DeepSpaceBackgroundState extends State<DeepSpaceBackground>
   // Removed didUpdateWidget to prevent re-initialization stutter
   // The painter will handle the 'subtle' flag by drawing fewer stars.
 
-  void _initStars(Size size) {
+  void _initStars(Size size, double devicePixelRatio) {
     _stars.clear();
-    const count = 300; // Always init max stars
+
+    final isWindows = !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+    const baseArea = 1920.0 * 1080.0;
+    final area = max(1.0, size.width * size.height);
+    final areaFactor = sqrt(area / baseArea).clamp(0.85, 2.25);
+    final uhdMul = isWindows ? 1.35 : 1.0;
+
+    final count = (300 * (isWindows ? areaFactor : 1.0) * uhdMul)
+        .round()
+        .clamp(300, 1400);
+
     for (int i = 0; i < count; i++) {
       // Star Color Temperature (more varied but still realistic)
       // Bias: mostly near-white, with a spectrum of subtle tints.
@@ -138,14 +215,30 @@ class _DeepSpaceBackgroundState extends State<DeepSpaceBackground>
       // Parallax depth (0.0 = far, 1.0 = near)
       final depth = _rnd.nextDouble();
 
+        // Favor smaller stars for UHD: more micro-detail, less "blob" feel.
+        final sizeRand =
+          isWindows ? pow(_rnd.nextDouble(), 1.65).toDouble() : _rnd.nextDouble();
+
+        // Keep a sensible minimum so micro-stars survive at DPR 1.
+        final minStar = isWindows ? 0.35 : 0.5;
+        final maxStar = isWindows ? 2.35 : 2.5;
+
+        // Slightly tighten sizes on higher DPR so the field stays crisp.
+        final dprTighten =
+          isWindows
+            ? (1.0 / max(1.0, devicePixelRatio)).clamp(0.75, 1.0)
+            : 1.0;
+
       _stars.add(
         _Star(
           x: _rnd.nextDouble(),
           y: _rnd.nextDouble(),
+          seed: _rnd.nextInt(1 << 31),
           size:
-              (0.5 + _rnd.nextDouble() * 2.0) *
+              (minStar + sizeRand * (maxStar - minStar)) *
               (widget.subtle ? 0.8 : 1.0) *
-              (0.5 + depth * 0.5),
+              (0.5 + depth * 0.5) *
+              dprTighten,
           brightness: 0.3 + _rnd.nextDouble() * 0.7,
           twinkleSpeed: 0.5 + _rnd.nextDouble() * 3.0,
           twinklePhase: _rnd.nextDouble() * 2 * pi,
@@ -158,6 +251,7 @@ class _DeepSpaceBackgroundState extends State<DeepSpaceBackground>
       );
     }
     _lastSize = size;
+    _lastDpr = devicePixelRatio;
   }
 
   @override
@@ -165,11 +259,13 @@ class _DeepSpaceBackgroundState extends State<DeepSpaceBackground>
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
-        if (_lastSize != size) {
+        final dpr = MediaQuery.devicePixelRatioOf(context);
+        if (_lastSize != size || _lastDpr != dpr) {
           if (widget.mode == DeepSpaceMode.background) {
-            _initStars(size);
+            _initStars(size, dpr);
           }
           _lastSize = size;
+          _lastDpr = dpr;
         }
 
         return Container(
@@ -185,8 +281,10 @@ class _DeepSpaceBackgroundState extends State<DeepSpaceBackground>
               nebulaCenters: _nebulaCenters,
               nebulaEnabled: _nebulaEnabled,
               nebulaColors: _nebulaColors,
+              nebulaSpecks: _nebulaSpecks,
               mode: widget.mode,
               time: _repaint,
+              devicePixelRatio: dpr,
             ),
           ),
         );
@@ -245,13 +343,9 @@ class _DeepSpaceBackgroundState extends State<DeepSpaceBackground>
         _nebulaCenters[i] = c;
 
         if (wrapped && _rnd.nextDouble() < 0.25) {
-          _nebulaColors[i] =
-              HSVColor.fromAHSV(
-                0.30,
-                195.0 + _rnd.nextDouble() * 90,
-                0.62 + _rnd.nextDouble() * 0.25,
-                0.50 + _rnd.nextDouble() * 0.18,
-              ).toColor();
+          final isWindows =
+              !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+          _nebulaColors[i] = _randomNebulaColor(isWindows: isWindows);
         }
       }
     }
@@ -427,8 +521,8 @@ class _CometStyle {
 
   static const cinematic = _CometStyle._(
     tailLengthMul: 0.95,
-    tailWidthMul: 0.95,
-    coreWidthMul: 0.95,
+    tailWidthMul: 0.57,
+    coreWidthMul: 0.57,
     headMul: 1.45,
     alphaMul: 1.0,
     debrisCount: 6,
@@ -438,6 +532,7 @@ class _CometStyle {
 
 class _Star {
   double x, y; // 0.0 to 1.0
+  final int seed;
   double size;
   double brightness;
   double twinkleSpeed;
@@ -449,6 +544,7 @@ class _Star {
   _Star({
     required this.x,
     required this.y,
+    required this.seed,
     required this.size,
     required this.brightness,
     required this.twinkleSpeed,
@@ -458,12 +554,28 @@ class _Star {
     required this.depth,
   });
 
-  double opacityAt(double timeSeconds) {
+  static double _hash11(double x) {
+    final v = sin(x * 12.9898) * 43758.5453;
+    return v - v.floorToDouble();
+  }
+
+  double opacityAt(double timeSeconds, {required bool isWindows}) {
     final t = timeSeconds * twinkleSpeed + twinklePhase;
-    final wave = sin(t) + sin(t * 2.7) * 0.5;
+
+    // Base periodic twinkle (kept subtle so it doesn't look like blinking).
+    final baseWave = sin(t) + sin(t * 2.7) * 0.5;
+
+    // Aperiodic scintillation (cheap pseudo-noise) so UHD stars feel less uniform.
+    final n1 = _hash11(timeSeconds * 0.65 + seed * 0.0000013);
+    final n2 = _hash11(timeSeconds * 1.25 + seed * 0.0000007);
+    final noise = (n1 - 0.5) * 1.15 + (n2 - 0.5) * 0.55;
+
+    final wave = baseWave + (isWindows ? noise : noise * 0.55);
+
     // Far stars twinkle less.
-    final twinkleAmp = 0.18 * (0.35 + depth * 0.65);
-    return (brightness + wave * twinkleAmp).clamp(0.08, 1.0);
+    final twinkleAmpBase = 0.18 * (0.35 + depth * 0.65);
+    final twinkleAmp = isWindows ? twinkleAmpBase * 1.25 : twinkleAmpBase;
+    return (brightness + wave * twinkleAmp).clamp(0.05, 1.0);
   }
 
   void update(double dt) {
@@ -471,6 +583,22 @@ class _Star {
     x -= driftSpeed * dt;
     if (x < 0) x += 1.0;
   }
+}
+
+class _NebulaSpeck {
+  final double x;
+  final double y;
+  final double radius;
+  final double alpha;
+  final Color color;
+
+  const _NebulaSpeck({
+    required this.x,
+    required this.y,
+    required this.radius,
+    required this.alpha,
+    required this.color,
+  });
 }
 
 class _DebrisSpec {
@@ -589,8 +717,10 @@ class _StarFieldPainter extends CustomPainter {
   final List<Offset> nebulaCenters;
   final List<bool> nebulaEnabled;
   final List<Color> nebulaColors;
+  final List<_NebulaSpeck> nebulaSpecks;
   final DeepSpaceMode mode;
   final ValueNotifier<double> time;
+  final double devicePixelRatio;
 
   _StarFieldPainter({
     required this.stars,
@@ -599,9 +729,18 @@ class _StarFieldPainter extends CustomPainter {
     required this.nebulaCenters,
     required this.nebulaEnabled,
     required this.nebulaColors,
+    required this.nebulaSpecks,
     required this.mode,
     required this.time,
+    required this.devicePixelRatio,
   }) : super(repaint: time);
+
+  bool get _isWindowsPaint => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
+  double _hash01(double v) {
+    final x = sin(v * 12.9898) * 43758.5453;
+    return x - x.floorToDouble();
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -610,6 +749,11 @@ class _StarFieldPainter extends CustomPainter {
     final h = size.height;
     final paint = Paint();
 
+    final isWindows = _isWindowsPaint;
+    final dpr = max(1.0, devicePixelRatio);
+    // Keep blur closer to a physical amount on UHD so it stays crisp.
+    final blurMul = isWindows ? (0.80 / dpr).clamp(0.55, 0.90) : 1.0;
+
     if (mode == DeepSpaceMode.background) {
       // 1. Draw Nebula Clouds (Background)
       // Deep Space Base
@@ -617,7 +761,7 @@ class _StarFieldPainter extends CustomPainter {
 
       // Keep nebula visible even in subtle mode.
       // Make nebula ~65% harder to see overall.
-      final nebulaAlphaMul = (subtle ? 0.65 : 1.0) * 0.35;
+      final nebulaAlphaMul = (subtle ? 0.65 : 1.0) * (isWindows ? 0.44 : 0.35);
       for (int i = 0; i < nebulaCenters.length; i++) {
         if (i < nebulaEnabled.length && !nebulaEnabled[i]) continue;
         final c = nebulaCenters[i];
@@ -632,7 +776,8 @@ class _StarFieldPainter extends CustomPainter {
         // wobble slowly, creating evolving structure instead of a static circle.
         final baseRadius = min(w, h) * 0.72;
         paint.blendMode = BlendMode.screen;
-        for (int j = 0; j < 4; j++) {
+        final blobCount = isWindows ? 6 : 4;
+        for (int j = 0; j < blobCount; j++) {
           final phase = i * 3.11 + j * 1.87;
           final wobble = 0.10 + 0.05 * sin(timeSeconds * 0.08 + phase);
           final blobOffset = Offset(
@@ -663,6 +808,33 @@ class _StarFieldPainter extends CustomPainter {
           canvas.drawCircle(center, radius, paint);
         }
 
+        // Extra filament / clump detail (Windows UHD only).
+        if (isWindows && !subtle) {
+          final filamentColor = Color.lerp(nebulaColors[i], Colors.white, 0.18)!;
+          for (int k = 0; k < 10; k++) {
+            final seed = i * 97.1 + k * 13.7;
+            final fx = (_hash01(seed + 0.7) - 0.5) * w * 0.35;
+            final fy = (_hash01(seed + 2.9) - 0.5) * h * 0.28;
+            final rr = baseRadius * (0.10 + 0.22 * _hash01(seed + 4.3));
+            final center2 = baseCenter + Offset(fx, fy);
+            paint.shader = ui.Gradient.radial(
+              center2,
+              rr,
+              [
+                filamentColor.withValues(
+                  alpha: (0.050 + 0.030 * _hash01(seed + 1.4)) * nebulaAlphaMul,
+                ),
+                nebulaColors[i].withValues(
+                  alpha: (0.020 + 0.020 * _hash01(seed + 6.7)) * nebulaAlphaMul,
+                ),
+                Colors.transparent,
+              ],
+              const [0.0, 0.55, 1.0],
+            );
+            canvas.drawCircle(center2, rr, paint);
+          }
+        }
+
         // Readable inner "ion" core that also breathes slightly.
         final coreCenter =
             baseCenter +
@@ -684,26 +856,105 @@ class _StarFieldPainter extends CustomPainter {
         );
         paint.blendMode = BlendMode.plus;
         canvas.drawCircle(coreCenter, coreRadius, paint);
+
+        // Subtle dark dust lanes (adds depth/contrast) – Windows only.
+        if (isWindows && !subtle) {
+          paint
+            ..shader = ui.Gradient.radial(
+              baseCenter,
+              baseRadius * 0.72,
+              [
+                Colors.transparent,
+                Colors.black.withValues(alpha: 0.10 * nebulaAlphaMul),
+              ],
+              const [0.0, 1.0],
+            )
+            ..blendMode = BlendMode.multiply;
+          canvas.drawCircle(baseCenter, baseRadius * 0.72, paint);
+        }
       }
       paint.blendMode = BlendMode.srcOver;
       paint.shader = null;
+
+      // Nebula texture specks (Windows UHD only).
+      if (isWindows && !subtle && nebulaSpecks.isNotEmpty) {
+        paint
+          ..blendMode = BlendMode.plus
+          ..shader = null
+          ..maskFilter = null;
+        final drift = Offset(
+          sin(timeSeconds * 0.018) * 0.03,
+          cos(timeSeconds * 0.016) * 0.025,
+        );
+        for (final s in nebulaSpecks) {
+          final x = (s.x + drift.dx) % 1.0;
+          final y = (s.y + drift.dy) % 1.0;
+          paint.color = s.color.withValues(alpha: s.alpha);
+          canvas.drawCircle(Offset(x * w, y * h), s.radius, paint);
+        }
+        paint.blendMode = BlendMode.srcOver;
+      }
 
       // 2. Draw Stars
       final drawCount = subtle ? 50 : stars.length;
       for (int i = 0; i < drawCount && i < stars.length; i++) {
         final star = stars[i];
-        final op = star.opacityAt(timeSeconds);
-        final alpha = op * (subtle ? 0.25 : 0.85);
+        final op = star.opacityAt(timeSeconds, isWindows: isWindows);
+        final alpha = op * (subtle ? 0.25 : (isWindows ? 0.92 : 0.85));
         final pos = Offset(star.x * w, star.y * h);
 
-        // Soft glow for a small subset of bright, near stars.
-        if (!subtle && star.size > 1.6 && op > 0.82) {
-          paint.color = star.color.withValues(alpha: alpha * 0.12);
-          canvas.drawCircle(pos, star.size * 2.6, paint);
+        var starColor = star.color;
+        var starRadius = star.size;
+        if (isWindows && !subtle) {
+          final sparkle = ((op - 0.60) / 0.40).clamp(0.0, 1.0);
+          starColor = Color.lerp(star.color, Colors.white, sparkle * 0.20)!;
+          starRadius = star.size * (1.0 + 0.12 * sparkle);
         }
 
-        paint.color = star.color.withValues(alpha: alpha);
-        canvas.drawCircle(pos, star.size, paint);
+        // Soft glow for a small subset of bright, near stars.
+        if (!subtle && starRadius > 1.6 && op > (isWindows ? 0.80 : 0.82)) {
+          paint.color = starColor.withValues(alpha: alpha * 0.12);
+          canvas.drawCircle(
+            pos,
+            starRadius * (isWindows ? 2.05 : 2.6),
+            paint,
+          );
+        }
+
+        // Add star spikes for brighter stars (more realistic appearance)
+        if (!subtle && starRadius > 1.2 && op > (isWindows ? 0.75 : 0.78)) {
+          const spikeCount = 4; // Cross-shaped spikes
+          final spikeLength = starRadius * (isWindows ? 1.8 : 2.2);
+          final spikeWidth = starRadius * 0.3;
+
+          paint.color = starColor.withValues(alpha: alpha * 0.6);
+          for (int i = 0; i < spikeCount; i++) {
+            final angle = (i * pi) / 2; // 90 degrees apart
+            final startOffset = Offset(
+              cos(angle) * starRadius * 0.8,
+              sin(angle) * starRadius * 0.8,
+            );
+            final endOffset = Offset(
+              cos(angle) * spikeLength,
+              sin(angle) * spikeLength,
+            );
+
+            final path = Path()
+              ..moveTo(pos.dx + startOffset.dx, pos.dy + startOffset.dy)
+              ..lineTo(pos.dx + endOffset.dx, pos.dy + endOffset.dy)
+              ..lineTo(pos.dx + endOffset.dx + sin(angle) * spikeWidth,
+                      pos.dy + endOffset.dy - cos(angle) * spikeWidth)
+              ..lineTo(pos.dx + startOffset.dx + sin(angle) * spikeWidth * 0.5,
+                      pos.dy + startOffset.dy - cos(angle) * spikeWidth * 0.5)
+              ..close();
+
+            canvas.drawPath(path, paint);
+          }
+        }
+
+        // Main star body
+        paint.color = starColor.withValues(alpha: alpha);
+        canvas.drawCircle(pos, starRadius, paint);
       }
     }
 
@@ -724,16 +975,11 @@ class _StarFieldPainter extends CustomPainter {
             s.style.tailLengthMul;
         // Keep a stable comet shape while it traverses the screen.
         // Cinematic comets: longer dust tail.
-        final tailLen = cinematic ? (baseTail * 1.62) : baseTail;
+        final tailLen = cinematic ? (baseTail * 1.82) : baseTail;
         final end =
             start - Offset(cos(s.angle) * tailLen, sin(s.angle) * tailLen);
 
         final alpha = s.style.alphaMul.clamp(0.0, 1.0);
-
-        double hash01(double v) {
-          final x = sin(v * 12.9898) * 43758.5453;
-          return x - x.floorToDouble();
-        }
 
         // 1. The Tail (Gaseous Trail)
         final tailPaint =
@@ -787,14 +1033,14 @@ class _StarFieldPainter extends CustomPainter {
                 ..blendMode = BlendMode.plus
                 ..maskFilter = MaskFilter.blur(
                   BlurStyle.normal,
-                  8 * s.sizeScale,
+                  (8 * s.sizeScale) * blurMul,
                 );
 
           final baseW =
               (1.7 + 1.15 * s.sizeScale) *
               s.style.tailWidthMul *
               s.tailWidthJitter;
-          const segs = 18;
+          final segs = isWindows ? 28 : 18;
           final left = <Offset>[];
           final right = <Offset>[];
 
@@ -802,13 +1048,16 @@ class _StarFieldPainter extends CustomPainter {
             final t = i / segs;
             final c = pointOnTail(t);
 
+            // Taper so the dust tail gets thinner at the far end.
+            final tailTaper = 0.25 + 0.75 * pow(1.0 - t, 0.85).toDouble();
+
             // Wider farther from the nucleus (fan), slightly asymmetrical.
             final noise =
-                0.92 + 0.18 * hash01(seed * 0.001 + t * 9.3 + i * 0.17);
+                0.92 + 0.18 * _hash01(seed * 0.001 + t * 9.3 + i * 0.17);
             // Ice-cream-cone fan: tight at the head, flares quickly.
             final tt = pow(t, 1.25).toDouble();
             final spread = (0.24 + 2.25 * tt) * (1.05 - 0.28 * t);
-            final width = baseW * spread * noise;
+            final width = baseW * spread * noise * tailTaper;
             final skew = s.headSkew * (0.35 + 0.25 * t);
 
             left.add(c + perp * (width * (1.05 + skew)));
@@ -841,6 +1090,21 @@ class _StarFieldPainter extends CustomPainter {
           );
           canvas.drawPath(dustPath, dustPaint);
 
+          final spinePaint = Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeCap = StrokeCap.round
+            ..blendMode = BlendMode.plus
+            ..strokeWidth = 1.1 * s.sizeScale
+            ..shader = ui.Gradient.linear(
+              start,
+              end,
+              [
+                Colors.white.withValues(alpha: alpha * 0.42),
+                Colors.transparent,
+              ],
+            );
+          canvas.drawPath(dustPath, spinePaint);
+
           // Dust streaks inside the cone (fine trails)
           final streakPaint =
               Paint()
@@ -856,7 +1120,7 @@ class _StarFieldPainter extends CustomPainter {
                     s.coreWidthJitter
                 ..maskFilter = MaskFilter.blur(
                   BlurStyle.normal,
-                  3.2 * s.sizeScale,
+                  (3.2 * s.sizeScale) * blurMul,
                 );
           final streakEnd =
               start -
@@ -864,9 +1128,9 @@ class _StarFieldPainter extends CustomPainter {
                 cos(s.angle) * (tailLen * 1.55),
                 sin(s.angle) * (tailLen * 1.55),
               );
-          for (int k = 0; k < 5; k++) {
+          for (int k = 0; k < (isWindows ? 7 : 5); k++) {
             final drift =
-                (hash01(seed * 0.11 + k * 7.3) - 0.5) *
+                (_hash01(seed * 0.11 + k * 7.3) - 0.5) *
                 baseW *
                 (0.65 + 0.35 * k);
             final skewDrift = drift + (s.headSkew * baseW * 0.55);
@@ -896,7 +1160,7 @@ class _StarFieldPainter extends CustomPainter {
                     1.1 * s.sizeScale * s.style.coreWidthMul * s.coreWidthJitter
                 ..maskFilter = MaskFilter.blur(
                   BlurStyle.normal,
-                  2.0 * s.sizeScale,
+                  (2.0 * s.sizeScale) * blurMul,
                 )
                 ..shader = ui.Gradient.linear(
                   start,
@@ -908,23 +1172,33 @@ class _StarFieldPainter extends CustomPainter {
                   ],
                   const [0.0, 0.18, 1.0],
                 );
-          final ionPath = Path()..moveTo(start.dx, start.dy);
-          for (int i = 1; i <= segs; i++) {
-            final t = i / segs;
-            final c = pointOnTail(t);
-            ionPath.lineTo(c.dx, c.dy);
+          // Draw as tapered segments so it thins toward the tail.
+          for (int i = 0; i < segs; i++) {
+            final t0 = i / segs;
+            final t1 = (i + 1) / segs;
+            final c0 = pointOnTail(t0);
+            final c1 = pointOnTail(t1);
+            final tm = (t0 + t1) * 0.5;
+            final taper = 0.25 + 0.75 * pow(1.0 - tm, 0.85).toDouble();
+            ionPaint.strokeWidth =
+                (1.1 * s.sizeScale * s.style.coreWidthMul * s.coreWidthJitter) *
+                taper;
+            canvas.drawLine(c0, c1, ionPaint);
           }
-          canvas.drawPath(ionPath, ionPaint);
         } else {
-          // Subtle streak
-          if (ctrl != null) {
-            final path =
-                Path()
-                  ..moveTo(start.dx, start.dy)
-                  ..quadraticBezierTo(ctrl.dx, ctrl.dy, end.dx, end.dy);
-            canvas.drawPath(path, tailPaint);
-          } else {
-            canvas.drawLine(start, end, tailPaint);
+          // Subtle streak, tapered toward the tail.
+          final segs = isWindows ? 16 : 10;
+          final baseW =
+              3.0 * s.sizeScale * s.style.tailWidthMul * s.tailWidthJitter;
+          for (int i = 0; i < segs; i++) {
+            final t0 = i / segs;
+            final t1 = (i + 1) / segs;
+            final p0 = pointOnTail(t0);
+            final p1 = pointOnTail(t1);
+            final tm = (t0 + t1) * 0.5;
+            final taper = 0.25 + 0.75 * pow(1.0 - tm, 0.85).toDouble();
+            tailPaint.strokeWidth = baseW * taper;
+            canvas.drawLine(p0, p1, tailPaint);
           }
         }
 
@@ -940,16 +1214,18 @@ class _StarFieldPainter extends CustomPainter {
             ],
             [0.0, 0.2, 1.0],
           );
-          tailPaint.strokeWidth =
+          final segs = isWindows ? 16 : 10;
+          final baseW =
               1.0 * s.sizeScale * s.style.coreWidthMul * s.coreWidthJitter;
-          if (ctrl != null) {
-            final path =
-                Path()
-                  ..moveTo(start.dx, start.dy)
-                  ..quadraticBezierTo(ctrl.dx, ctrl.dy, end.dx, end.dy);
-            canvas.drawPath(path, tailPaint);
-          } else {
-            canvas.drawLine(start, end, tailPaint);
+          for (int i = 0; i < segs; i++) {
+            final t0 = i / segs;
+            final t1 = (i + 1) / segs;
+            final p0 = pointOnTail(t0);
+            final p1 = pointOnTail(t1);
+            final tm = (t0 + t1) * 0.5;
+            final taper = 0.25 + 0.75 * pow(1.0 - tm, 0.85).toDouble();
+            tailPaint.strokeWidth = baseW * taper;
+            canvas.drawLine(p0, p1, tailPaint);
           }
         }
 
@@ -967,64 +1243,86 @@ class _StarFieldPainter extends CustomPainter {
           canvas.rotate(s.angle);
           final skewPx = headBase * 0.5 * s.headSkew;
 
-          // Big diffuse coma cloud (white-green)
-          const flareMul =
-              0.078; // reduced further: 0.13 * 0.60 (additional -40%)
-          final comaOuter = Rect.fromCenter(
-            center: Offset(skewPx * 0.55, 0),
-            width: headBase * 6.1 * s.headStretch,
-            height: headBase * 3.7,
-          );
-          paint.shader = ui.Gradient.radial(
-            Offset(skewPx * 0.55, 0),
-            headBase * 3.45,
-            [
-              comaColor.withValues(alpha: alpha * 0.36 * flareMul),
-              comaTint.withValues(alpha: alpha * 0.26 * flareMul),
-              Colors.transparent,
-            ],
-            const [0.0, 0.55, 1.0],
-          );
-          paint.maskFilter = MaskFilter.blur(
-            BlurStyle.normal,
-            24 * s.sizeScale * flareMul,
-          );
-          canvas.drawOval(comaOuter, paint);
+          // Big diffuse coma cloud (white-green) with irregular shape
+          const flareMul = 0.10;
+          const comaGlowWidthMul = 0.66;
+
+          // Create irregular coma shape using multiple overlapping ovals
+          final comaSeed = ((s.angle * 100000).round() ^
+                           (s.speedPxPerSec.round() << 1) ^
+                           ((s.sizeScale * 100).round() << 3) ^
+                           (s.headSkew * 1000).round());
+          final comaShapes = 3 + (s.sizeScale * 2).round();
+          for (int i = 0; i < comaShapes; i++) {
+            final shapeSeed = comaSeed + i * 17;
+            final offsetX = skewPx * 0.55 + (0.3 * _hash01(shapeSeed * 0.01) - 0.15) * headBase;
+            final offsetY = (0.2 * _hash01(shapeSeed * 0.02) - 0.1) * headBase;
+            final shapeWidth = headBase * (4.5 + 1.6 * _hash01(shapeSeed * 0.03)) * s.headStretch * comaGlowWidthMul;
+            final shapeHeight = headBase * (2.8 + 0.9 * _hash01(shapeSeed * 0.04)) * comaGlowWidthMul;
+
+            final comaRect = Rect.fromCenter(
+              center: Offset(offsetX, offsetY),
+              width: shapeWidth,
+              height: shapeHeight,
+            );
+
+            final shapeAlpha = alpha * (0.25 + 0.15 * _hash01(shapeSeed * 0.05)) * flareMul;
+            paint.shader = ui.Gradient.radial(
+              Offset(offsetX, offsetY),
+              shapeWidth * 0.4,
+              [
+                comaColor.withValues(alpha: shapeAlpha),
+                comaTint.withValues(alpha: shapeAlpha * 0.7),
+                Colors.transparent,
+              ],
+              const [0.0, 0.6, 1.0],
+            );
+            paint.maskFilter = MaskFilter.blur(
+              BlurStyle.normal,
+              (18 + 8 * _hash01(shapeSeed * 0.06)) * s.sizeScale * flareMul * comaGlowWidthMul * blurMul,
+            );
+            canvas.drawOval(comaRect, paint);
+          }
           paint.shader = null;
 
           final outer = Rect.fromCenter(
             center: Offset(skewPx, 0),
-            width: headBase * 2.2 * s.headStretch,
-            height: headBase * 1.4,
+            width: headBase * 2.2 * s.headStretch * comaGlowWidthMul,
+            height: headBase * 1.4 * comaGlowWidthMul,
           );
           paint.color = comaTint.withValues(alpha: alpha * 0.22 * flareMul);
           paint.maskFilter = MaskFilter.blur(
             BlurStyle.normal,
-            12 * s.sizeScale * flareMul,
+            (12 * s.sizeScale * flareMul * comaGlowWidthMul) * blurMul,
           );
           canvas.drawOval(outer, paint);
 
           final inner = Rect.fromCenter(
             center: Offset(skewPx * 0.6, 0),
-            width: headBase * 1.15 * s.headStretch,
-            height: headBase * 0.9,
+            width: headBase * 1.15 * s.headStretch * comaGlowWidthMul,
+            height: headBase * 0.9 * comaGlowWidthMul,
           );
           paint.color = comaColor.withValues(alpha: alpha * 0.55 * flareMul);
           paint.maskFilter = MaskFilter.blur(
             BlurStyle.normal,
-            5 * s.sizeScale * flareMul,
+            (5 * s.sizeScale * flareMul * comaGlowWidthMul) * blurMul,
           );
           canvas.drawOval(inner, paint);
           paint.maskFilter = null;
 
-          // Dark irregular nucleus
+          // Dark irregular nucleus with more realistic rocky texture
           final nucR = 2.20 * s.sizeScale;
           final nuc = Path();
-          const points = 9;
+          const points = 12; // More points for more irregular shape
+          final nucleusSeed = ((s.angle * 100000).round() ^
+                              (s.speedPxPerSec.round() << 1) ^
+                              ((s.sizeScale * 100).round() << 3) ^
+                              (s.headSkew * 1000).round());
+
           for (int i = 0; i < points; i++) {
             final a = (i / points) * 2 * pi;
-            final rr =
-                nucR * (0.72 + 0.48 * hash01((i + 1) * 1.7 + s.headSkew * 9.1));
+            // More varied radius for rocky appearance
+            final rr = nucR * (0.65 + 0.55 * _hash01(nucleusSeed * 0.001 + i * 2.1));
             final p = Offset(skewPx * 0.48 + cos(a) * rr, sin(a) * rr);
             if (i == 0) {
               nuc.moveTo(p.dx, p.dy);
@@ -1033,12 +1331,68 @@ class _StarFieldPainter extends CustomPainter {
             }
           }
           nuc.close();
+
+          // Add surface texture/details to nucleus
+          final detailPath = Path();
+          for (int i = 0; i < 8; i++) {
+            final a = (i / 8) * 2 * pi + _hash01(nucleusSeed * 0.01 + i) * 0.5;
+            final r = nucR * (0.75 + 0.25 * _hash01(nucleusSeed * 0.02 + i));
+            final detailSize = nucR * 0.15 * _hash01(nucleusSeed * 0.03 + i);
+            final p = Offset(skewPx * 0.48 + cos(a) * r, sin(a) * r);
+
+            detailPath.addOval(Rect.fromCenter(
+              center: p,
+              width: detailSize,
+              height: detailSize * 0.6,
+            ));
+          }
+
           paint
             ..shader = null
             ..maskFilter = null
             ..blendMode = BlendMode.srcOver
-            ..color = Colors.black.withValues(alpha: alpha * 0.92);
+            ..color = Colors.black.withValues(alpha: alpha * 0.95);
           canvas.drawPath(nuc, paint);
+
+          // Add surface details
+          paint.color = Color(0xFF2A2A2A).withValues(alpha: alpha * 0.7);
+          canvas.drawPath(detailPath, paint);
+
+          // Add plasma jets emanating from the nucleus
+          final jetSeed = nucleusSeed + 2000;
+          final jetCount = 2 + (s.sizeScale * 1.5).round();
+          for (int i = 0; i < jetCount; i++) {
+            final jetAngle = (i / jetCount) * 2 * pi + _hash01(jetSeed * 0.01 + i * 23) * 0.8;
+            final jetLength = headBase * (0.8 + 0.6 * _hash01(jetSeed * 0.02 + i * 24));
+            final jetWidth = headBase * (0.15 + 0.1 * _hash01(jetSeed * 0.03 + i * 25));
+
+            final jetStart = Offset(skewPx * 0.48, 0);
+            final jetEnd = Offset(
+              jetStart.dx + cos(jetAngle) * jetLength,
+              jetStart.dy + sin(jetAngle) * jetLength,
+            );
+
+            // Jet glow
+            paint.blendMode = BlendMode.plus;
+            paint.color = Color(0xFF66DDFF).withValues(alpha: alpha * 0.4);
+            paint.maskFilter = MaskFilter.blur(BlurStyle.normal, jetWidth * 3 * blurMul);
+
+            final jetPath = Path()
+              ..moveTo(jetStart.dx, jetStart.dy)
+              ..lineTo(jetEnd.dx, jetEnd.dy)
+              ..lineTo(jetEnd.dx + sin(jetAngle) * jetWidth, jetEnd.dy - cos(jetAngle) * jetWidth)
+              ..lineTo(jetStart.dx + sin(jetAngle) * jetWidth * 0.3, jetStart.dy - cos(jetAngle) * jetWidth * 0.3)
+              ..close();
+
+            canvas.drawPath(jetPath, paint);
+
+            // Jet core
+            paint.color = Colors.white.withValues(alpha: alpha * 0.6);
+            paint.maskFilter = MaskFilter.blur(BlurStyle.normal, jetWidth * blurMul);
+            canvas.drawLine(jetStart, jetEnd, paint);
+          }
+          paint.blendMode = BlendMode.srcOver;
+          paint.maskFilter = null;
 
           // Tiny bright core sparkle inside coma
           paint
@@ -1050,13 +1404,38 @@ class _StarFieldPainter extends CustomPainter {
             paint,
           );
 
+          // Add trailing fragments that break off
+          final fragmentSeed = nucleusSeed + 1000;
+          final fragmentCount = 3 + (s.sizeScale * 2).round();
+          for (int i = 0; i < fragmentCount; i++) {
+            final fragmentDist = 0.1 + 0.4 * _hash01(fragmentSeed * 0.1 + i * 3.7);
+            final fragmentAngle = s.angle + (0.3 * _hash01(fragmentSeed * 0.2 + i * 4.1) - 0.15);
+            final fragmentPos = Offset(
+              start.dx - cos(fragmentAngle) * (tailLen * fragmentDist),
+              start.dy - sin(fragmentAngle) * (tailLen * fragmentDist),
+            );
+
+            final fragmentSize = 0.8 + 1.2 * _hash01(fragmentSeed * 0.3 + i * 5.3);
+            final fragmentAlpha = alpha * (0.3 + 0.4 * _hash01(fragmentSeed * 0.4 + i * 6.1));
+
+            // Fragment glow
+            paint.color = s.color.withValues(alpha: fragmentAlpha * 0.4);
+            paint.maskFilter = MaskFilter.blur(BlurStyle.normal, fragmentSize * 2 * blurMul);
+            canvas.drawCircle(fragmentPos, fragmentSize * 3, paint);
+
+            // Fragment core
+            paint.color = Colors.white.withValues(alpha: fragmentAlpha * 0.8);
+            paint.maskFilter = null;
+            canvas.drawCircle(fragmentPos, fragmentSize, paint);
+          }
+
           canvas.restore();
         } else {
           // Outer Glow
           paint.color = s.color.withValues(alpha: alpha * 0.25);
           paint.maskFilter = MaskFilter.blur(
             BlurStyle.normal,
-            10 * s.sizeScale * s.style.headMul,
+            (10 * s.sizeScale * s.style.headMul) * blurMul,
           );
           canvas.drawCircle(start, headBase, paint);
 
@@ -1064,7 +1443,7 @@ class _StarFieldPainter extends CustomPainter {
           paint.color = s.color.withValues(alpha: alpha * 0.6);
           paint.maskFilter = MaskFilter.blur(
             BlurStyle.normal,
-            4 * s.sizeScale * s.style.headMul,
+            (4 * s.sizeScale * s.style.headMul) * blurMul,
           );
           canvas.drawCircle(start, headBase * 0.5, paint);
           paint.maskFilter = null;
@@ -1102,10 +1481,12 @@ class _StarFieldPainter extends CustomPainter {
   bool shouldRepaint(covariant _StarFieldPainter oldDelegate) {
     return oldDelegate.subtle != subtle ||
         oldDelegate.mode != mode ||
+        oldDelegate.devicePixelRatio != devicePixelRatio ||
         oldDelegate.stars != stars ||
         oldDelegate.shootingStars != shootingStars ||
         oldDelegate.nebulaCenters != nebulaCenters ||
         oldDelegate.nebulaColors != nebulaColors ||
+        oldDelegate.nebulaSpecks != nebulaSpecks ||
         oldDelegate.nebulaEnabled != nebulaEnabled;
   }
 }

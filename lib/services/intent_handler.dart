@@ -15,9 +15,13 @@ class IntentHandler {
     _intentStreamController = StreamController<String?>.broadcast();
 
     _channel.setMethodCallHandler((call) async {
-      if (call.method == 'onNewIntent') {
-        final String? data = call.arguments as String?;
-        _intentStreamController?.add(data);
+      try {
+        if (call.method == 'onNewIntent') {
+          final String? data = call.arguments as String?;
+          _intentStreamController?.add(data);
+        }
+      } catch (e) {
+        // Handle error silently
       }
     });
   }

@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:just_audio_background/just_audio_background.dart';
+import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'services/intent_handler.dart';
@@ -24,7 +25,10 @@ import 'screens/player_screen.dart';
 import 'services/library_scan_service.dart';
 import 'services/settings_service.dart';
 import 'services/database_service.dart';
+import 'services/logger_service.dart';
 import 'services/player_controller.dart';
+import 'services/telemetry_service.dart';
+import 'services/analytics_service.dart';
 import 'ui/deep_space_background.dart';
 import 'widgets/player_provider.dart';
 
@@ -68,6 +72,17 @@ Future<void> main([List<String> args = const []]) async {
   }
 
   WidgetsFlutterBinding.ensureInitialized();
+  LoggerService.instance.init();
+
+  // Initialize telemetry and analytics services
+  await TelemetryService.instance.init();
+  await AnalyticsService.instance.init();
+  AnalyticsService.logEvent('app_start', {'platform': Platform.operatingSystem});
+
+  // Use the media_kit backend for desktop audio (more reliable codec support).
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    JustAudioMediaKit.ensureInitialized();
+  }
   await SettingsService.instance.init(); // Initialize Settings
   await DatabaseService.instance.init(); // Initialize Database
 
@@ -156,6 +171,15 @@ class PlayaApp extends StatelessWidget {
     return AnimatedBuilder(
       animation: SettingsService.instance,
       builder: (context, _) {
+        final accentColor = Color(SettingsService.instance.accentColor);
+        final themeAccent = SettingsService.instance.themeMode == SettingsService.themeNeon
+            ? HSLColor.fromColor(accentColor)
+                .withHue((HSLColor.fromColor(accentColor).hue + 210) % 360)
+                .withSaturation(1.0)
+                .withLightness((HSLColor.fromColor(accentColor).lightness * 0.95).clamp(0.35, 0.75))
+                .toColor()
+            : accentColor;
+
         final base = ThemeData(
           useMaterial3: true,
           brightness: Brightness.dark,
@@ -170,7 +194,7 @@ class PlayaApp extends StatelessWidget {
           theme: base.copyWith(
             colorScheme: ColorScheme.dark(
               surface: _surface,
-              primary: Color(SettingsService.instance.accentColor),
+              primary: themeAccent,
               onSurface: _on,
             ),
             textTheme: GoogleFonts.exo2TextTheme(
@@ -217,8 +241,8 @@ class PlayaApp extends StatelessWidget {
             sliderTheme: base.sliderTheme.copyWith(
               trackHeight: 3,
               inactiveTrackColor: Colors.white24,
-              activeTrackColor: Color(SettingsService.instance.accentColor),
-              thumbColor: Color(SettingsService.instance.accentColor),
+              activeTrackColor: themeAccent,
+              thumbColor: themeAccent,
               overlayShape: SliderComponentShape.noOverlay,
             ),
           ),
@@ -368,6 +392,7 @@ class _ShellState extends State<_Shell> {
     final ctrl = PlayerController.ensure();
     final settings = SettingsService.instance;
     final scan = LibraryScanService.instance;
+    final topInset = MediaQuery.paddingOf(context).top;
 
     return PlayerProvider(
       ctrl: ctrl,
@@ -400,6 +425,26 @@ class _ShellState extends State<_Shell> {
                   ),
                 ),
               ),
+
+            // 2.5 Global top scrim: prevents accent-color bleed into the status bar / safe-area.
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              height: topInset + 36,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [kColorBg, kColorBg.withValues(alpha: 0.0)],
+                      stops: const [0.0, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
 
             // 3. Content (Scaffold)
             Scaffold(
@@ -801,7 +846,9 @@ class _ShellState extends State<_Shell> {
     });
   }
 
-  void _showBookmarks(BuildContext context, PlayerController ctrl) {
+  void _showBookmarks(BuildContext context, PlayerController ctrl) async {
+    await ctrl.reloadBookmarks();
+    if (!context.mounted) return;
     showModalBottomSheet(
       context: context,
       isScrollControlled: false,

@@ -3,6 +3,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
+
+import '../services/settings_service.dart';
 
 class WaveformWidget extends StatefulWidget {
   final String path;
@@ -10,6 +13,7 @@ class WaveformWidget extends StatefulWidget {
   final Color playedColor;
   final Color unplayedColor;
   final bool showDuration;
+  final MediaItem? item;
 
   const WaveformWidget({
     required this.path,
@@ -17,6 +21,7 @@ class WaveformWidget extends StatefulWidget {
     required this.playedColor,
     this.unplayedColor = Colors.transparent,
     this.showDuration = true,
+    this.item,
     super.key,
   });
 
@@ -27,7 +32,7 @@ class WaveformWidget extends StatefulWidget {
 class _WaveformWidgetState extends State<WaveformWidget> {
   List<double> _waveformData = [];
   Path? _cachedPath;
-  double? _cachedWidth;
+  Size? _cachedSize;
   bool _isExtracting = false;
 
   int _lastSeekAtMs = 0;
@@ -111,50 +116,55 @@ class _WaveformWidgetState extends State<WaveformWidget> {
 
   @override
   Widget build(BuildContext context) {
-    // if (Platform.isWindows) return const SizedBox(); // Removed to allow simulated waveform
-
-    if (_isExtracting && _waveformData.isEmpty) {
-      return const SizedBox(
-        height: 60,
-        child: Center(
-          child: SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ),
-      );
-    }
-
-    if (_waveformData.isEmpty) {
-      return const SizedBox(height: 60);
-    }
-
     return LayoutBuilder(
       builder: (context, constraints) {
+        // If parent doesn't constrain height, fall back to the legacy 60px.
+        final height =
+            constraints.hasBoundedHeight && constraints.maxHeight.isFinite
+                ? constraints.maxHeight
+                : 60.0;
+
+        if (_isExtracting && _waveformData.isEmpty) {
+          return SizedBox(
+            height: height,
+            child: const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
+
+        if (_waveformData.isEmpty) {
+          return SizedBox(height: height);
+        }
+
         final width = constraints.maxWidth;
+        final sizeKey = Size(width, height);
 
         // Cache the path for this width
-        if (_cachedPath == null || _cachedWidth != width) {
-          _cachedWidth = width;
+        if (_cachedPath == null || _cachedSize != sizeKey) {
+          _cachedSize = sizeKey;
           // We can't easily cache based on width in State without checking if width changed.
           // But LayoutBuilder runs when constraints change.
           // Let's rebuild path here.
-          const centerY = 30.0;
+          final centerY = height / 2;
           final step = width / (_waveformData.length - 1);
           final newPath = Path();
           newPath.moveTo(0, centerY);
           for (int i = 0; i < _waveformData.length; i++) {
             final x = i * step;
             final amplitude = _waveformData[i];
-            final height = amplitude * 60 * 0.8;
-            newPath.lineTo(x, centerY - height / 2);
+            final ampH = amplitude * height * 0.8;
+            newPath.lineTo(x, centerY - ampH / 2);
           }
           for (int i = _waveformData.length - 1; i >= 0; i--) {
             final x = i * step;
             final amplitude = _waveformData[i];
-            final height = amplitude * 60 * 0.8;
-            newPath.lineTo(x, centerY + height / 2);
+            final ampH = amplitude * height * 0.8;
+            newPath.lineTo(x, centerY + ampH / 2);
           }
           newPath.close();
           _cachedPath = newPath;
@@ -179,7 +189,7 @@ class _WaveformWidgetState extends State<WaveformWidget> {
               onHorizontalDragEnd: (_) => _flushPendingSeek(),
               onTapDown: (details) => _seek(details.globalPosition, context),
               child: SizedBox(
-                height: 60,
+                height: height,
                 child: Stack(
                   children: [
                     Positioned.fill(
@@ -189,8 +199,21 @@ class _WaveformWidgetState extends State<WaveformWidget> {
                             waveformData: _waveformData,
                             progress: currentProgress.clamp(0.0, 1.0),
                             timeSeconds: timeSeconds,
-                            playedColor: widget.playedColor,
-                            unplayedColor: widget.unplayedColor,
+                            playedColor: _resolveWaveformAccent(
+                              widget.playedColor,
+                              SettingsService.instance.themeMode,
+                              widget.path,
+                              widget.item,
+                            ),
+                            unplayedColor: widget.unplayedColor == Colors.transparent
+                                ? _resolveUnplayedColor(
+                                    widget.playedColor,
+                                    SettingsService.instance.themeMode,
+                                    widget.path,
+                                    widget.item,
+                                  )
+                                : widget.unplayedColor,
+                            bpm: _extractBpm(widget.item),
                             cachedPath: _cachedPath,
                           ),
                         ),
@@ -282,6 +305,60 @@ class _WaveformWidgetState extends State<WaveformWidget> {
     _lastSeekAtMs = DateTime.now().millisecondsSinceEpoch;
     widget.player.seek(pending);
   }
+
+  Color _resolveWaveformAccent(
+    Color accent,
+    String themeMode,
+    String path,
+    MediaItem? item,
+  ) {
+    if (themeMode == SettingsService.themeNeon) {
+      return _neonAccent(accent);
+    }
+    if (themeMode == SettingsService.themeAlbumArt) {
+      final key = item?.id ?? item?.title ?? path;
+      return _albumArtAccent(accent, key);
+    }
+    return accent;
+  }
+
+  Color _resolveUnplayedColor(
+    Color accent,
+    String themeMode,
+    String path,
+    MediaItem? item,
+  ) {
+    final base = _resolveWaveformAccent(accent, themeMode, path, item);
+    return base.withValues(alpha: 0.18);
+  }
+
+  double? _extractBpm(MediaItem? item) {
+    final rawBpm = item?.extras?['bpm'];
+    if (rawBpm is num) {
+      final bpmValue = rawBpm.toDouble();
+      return bpmValue > 0 ? bpmValue : null;
+    }
+    return null;
+  }
+
+  Color _neonAccent(Color accent) {
+    final hsl = HSLColor.fromColor(accent);
+    return hsl
+        .withHue((hsl.hue + 210) % 360)
+        .withSaturation(1.0)
+        .withLightness((hsl.lightness * 0.95).clamp(0.35, 0.75))
+        .toColor();
+  }
+
+  Color _albumArtAccent(Color accent, String key) {
+    final rnd = Random(key.hashCode);
+    return HSLColor.fromAHSL(
+      1.0,
+      rnd.nextDouble() * 360,
+      0.70 + rnd.nextDouble() * 0.18,
+      0.42 + rnd.nextDouble() * 0.12,
+    ).toColor();
+  }
 }
 
 class PreciseWaveformPainter extends CustomPainter {
@@ -290,6 +367,7 @@ class PreciseWaveformPainter extends CustomPainter {
   final double timeSeconds;
   final Color playedColor;
   final Color unplayedColor;
+  final double? bpm;
   final Path? cachedPath;
 
   PreciseWaveformPainter({
@@ -298,6 +376,7 @@ class PreciseWaveformPainter extends CustomPainter {
     required this.timeSeconds,
     required this.playedColor,
     required this.unplayedColor,
+    this.bpm,
     this.cachedPath,
   });
 
@@ -331,26 +410,31 @@ class PreciseWaveformPainter extends CustomPainter {
       path.close();
     }
 
-    // Draw Unplayed (Background) - Subtle "Flight Path"
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = unplayedColor.withValues(alpha: 0.15) // Very subtle
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.0,
-    );
-    // Also fill with very low opacity
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = unplayedColor.withValues(alpha: 0.05)
-        ..style = PaintingStyle.fill,
-    );
+    // Draw Unplayed (Background) - Subtle "Flight Path" - HIDDEN
+    // canvas.drawPath(
+    //   path,
+    //   Paint()
+    //     ..color = unplayedColor.withValues(alpha: 0.15) // Very subtle
+    //     ..style = PaintingStyle.stroke
+    //     ..strokeWidth = 1.0,
+    // );
+    // Also fill with very low opacity - HIDDEN
+    // canvas.drawPath(
+    //   path,
+    //   Paint()
+    //     ..color = unplayedColor.withValues(alpha: 0.05)
+    //     ..style = PaintingStyle.fill,
+    // );
 
     final width = size.width;
-    final cursorX = progress * width;
+    final beatStrength = _computeBeatStrength(timeSeconds, bpm);
+    // Cursor moves naturally at constant speed (progress-based), no beat sync
+    final cursorX = (progress * width).clamp(0.0, width);
+    final cursorY = centerY;
     final shipLen = size.height * 0.8; // Reduced from 0.95 (approx 15% smaller)
-    final tailX = cursorX - (shipLen * 0.45);
+    // Ensure the tail/nozzle X is clamped so clipping/shaders don't paint the whole canvas
+    final rawTail = cursorX - (shipLen * 0.45);
+    final tailX = rawTail.clamp(0.0, width);
 
     // Draw Played (Waveform + Plasma Trail)
     canvas.save();
@@ -365,6 +449,7 @@ class PreciseWaveformPainter extends CustomPainter {
       height: size.height,
       baseColor: playedColor,
       t: timeSeconds,
+      beatStrength: beatStrength,
     );
 
     // 1. Unified Plasma-to-Track Gradient (The "Merge")
@@ -372,9 +457,13 @@ class PreciseWaveformPainter extends CustomPainter {
     // We match the transition width to the plume length for visual consistency.
     final transitionWidth = shipLen * 1.5;
 
+    // Compute safe gradient endpoints (keep within canvas bounds)
+    final gradStartX = tailX.clamp(0.0, width);
+    final gradEndX = (tailX - transitionWidth).clamp(0.0, width);
+
     final mainShader = ui.Gradient.linear(
-      Offset(tailX, 0),
-      Offset(tailX - transitionWidth, 0),
+      Offset(gradStartX, 0),
+      Offset(gradEndX, 0),
       [
         Colors.white, // Hot Engine Output (At Nozzle)
         Colors.cyanAccent, // Cooling Plasma
@@ -393,9 +482,11 @@ class PreciseWaveformPainter extends CustomPainter {
 
     // 2. Plasma Glow Overlay (Bloom)
     // Adds a soft glowing aura around the hot part
+    final glowStartX = tailX.clamp(0.0, width);
+    final glowEndX = (tailX - transitionWidth * 0.5).clamp(0.0, width);
     final glowShader = ui.Gradient.linear(
-      Offset(tailX, 0),
-      Offset(tailX - transitionWidth * 0.5, 0), // Tighter glow
+      Offset(glowStartX, 0),
+      Offset(glowEndX, 0), // Tighter glow
       [
         Colors.white.withValues(alpha: 0.5), // Slightly less intense
         Colors.cyan.withValues(alpha: 0.2),
@@ -442,12 +533,20 @@ class PreciseWaveformPainter extends CustomPainter {
     // Draw Rocinante Cursor
     _drawRocinante(
       canvas,
-      Offset(cursorX, centerY),
+      Offset(cursorX, cursorY),
       size.height,
       playedColor,
       progress,
       timeSeconds,
+      beatStrength,
     );
+  }
+
+  double _computeBeatStrength(double timeSeconds, double? bpm) {
+    final effectiveBpm = (bpm != null && bpm > 0) ? bpm : 120.0;
+    final cycle = 60.0 / effectiveBpm;
+    final phase = (timeSeconds % cycle) / cycle;
+    return 0.35 + 0.65 * ((cos(2 * pi * phase) + 1.0) / 2.0);
   }
 
   void _drawEnginePlume({
@@ -457,12 +556,13 @@ class PreciseWaveformPainter extends CustomPainter {
     required double height,
     required Color baseColor,
     required double t,
+    required double beatStrength,
   }) {
     final shipLen = height * 0.8;
     // Epstein-inspired drive: long, collimated, white-hot core with blue ion halo.
-    final flicker = 1.0 + 0.035 * sin(t * 22.0) + 0.02 * cos(t * 41.0);
+    final flicker = 1.0 + 0.08 * beatStrength + 0.035 * sin(t * 22.0) + 0.02 * cos(t * 41.0);
     final wobble = 1.0 + 0.045 * sin(t * 9.0) + 0.03 * sin(t * 15.0 + 0.9);
-    final oscillation = sin(t * 7.0) * height * 0.02;
+    final oscillation = sin(t * 7.0) * height * (0.02 + 0.008 * beatStrength);
 
     final plumeLen = shipLen * 2.25 * flicker;
     final coreHalfWidth = height * 0.11;
@@ -590,6 +690,7 @@ class PreciseWaveformPainter extends CustomPainter {
     Color color,
     double progress,
     double timeSeconds,
+    double beatStrength,
   ) {
     // The Rocinante (Tachi) - Corvette Class
     final shipLen = height * 0.8; // Reduced from 0.95 (approx 15% smaller)
@@ -619,8 +720,9 @@ class PreciseWaveformPainter extends CustomPainter {
     );
 
     // 1. Drive Plume (Epstein Drive) - more collimated + turbulent edges
-    final flicker =
-        1.0 + 0.05 * sin(timeSeconds * 22.0) + 0.03 * cos(timeSeconds * 41.0);
+    final flicker = 1.0 + 0.12 * beatStrength +
+        0.05 * sin(timeSeconds * 22.0) +
+        0.03 * cos(timeSeconds * 41.0);
     final wobble =
         1.0 +
         0.06 * sin(timeSeconds * 9.0) +
@@ -766,7 +868,7 @@ class PreciseWaveformPainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = shipLen * 0.015
-        ..color = accent.withValues(alpha: 0.14)
+        ..color = accent.withValues(alpha: (0.14 + 0.22 * beatStrength).clamp(0.0, 1.0))
         ..blendMode = BlendMode.plus
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0),
     );

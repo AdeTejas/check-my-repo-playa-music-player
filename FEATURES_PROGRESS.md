@@ -2,9 +2,9 @@
 
 ## ✅ Completed Features
 
-### 1. Playlist Management (SharedPreferences)
+### 1. Playlist Management (SQLite)
 - **Data Model**: `Playlist` class with JSON serialization.
-- **Repository**: `PlaylistRepository` using `SharedPreferences` for persistence.
+- **Repository**: `PlaylistRepository` using `DatabaseService` for persistence.
 - **UI**:
   - `PlaylistsScreen`: List user playlists and smart playlists.
   - `PlaylistDetailScreen`: View and manage playlist songs.
@@ -27,9 +27,6 @@
 ### 5. Equalizer
 - **Service**: Android `MethodChannel` implementation.
 - **UI**: `EqualizerScreen` with vertical sliders and presets.
-
-## 🔄 In Progress
-- **Database**: Currently using `SharedPreferences` for simplicity as requested. Full DB implementation (Drift/Hive) is deferred.
 
 ## 🎯 Next Steps
 1. **Waveforms**: Ensure waveform generation is efficient and accurate.

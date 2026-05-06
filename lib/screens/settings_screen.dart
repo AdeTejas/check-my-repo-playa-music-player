@@ -264,7 +264,51 @@ class SettingsScreen extends StatelessWidget {
                 onChanged: settings.setSmartVolumeLimiterEnabled,
                 icon: PhosphorIconsBold.shieldCheck,
               ),
-              const SizedBox(height: kSp * 2),
+              _buildSwitchTile(
+                context: context,
+                title: 'Keep Screen On',
+                subtitle: 'Prevent screen from sleeping while app is open',
+                value: settings.keepScreenOn,
+                onChanged: settings.setKeepScreenOn,
+                icon: PhosphorIconsBold.sun,
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: kSp),
+                child: GlassPanel(
+                  borderRadius: BorderRadius.circular(kRadius),
+                  borderColor: Colors.white.withValues(alpha: 0.15),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: ListTile(
+                      leading: Icon(
+                        PhosphorIconsBold.speakerHigh,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                      title: const Text('Audio Focus'),
+                      subtitle: Text(
+                        settings.audioFocusMode == 'pause'
+                            ? 'Pause on interruption'
+                            : settings.audioFocusMode == 'duck'
+                            ? 'Lower volume on interruption'
+                            : 'Ignore interruptions',
+                      ),
+                      trailing: DropdownButton<String>(
+                        value: settings.audioFocusMode,
+                        dropdownColor: Theme.of(context).cardColor,
+                        underline: const SizedBox(),
+                        items: const [
+                          DropdownMenuItem(value: 'pause', child: Text('Pause')),
+                          DropdownMenuItem(value: 'duck', child: Text('Duck')),
+                          DropdownMenuItem(value: 'none', child: Text('Ignore')),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) settings.setAudioFocusMode(v);
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ),
 
               _buildSectionHeader('Appearance'),
               _buildSwitchTile(
@@ -277,6 +321,17 @@ class SettingsScreen extends StatelessWidget {
                         ? null
                         : settings.setShowSpaceBackground,
                 icon: PhosphorIconsBold.planet,
+              ),
+              _buildSwitchTile(
+                context: context,
+                title: 'Screensaver Mode',
+                subtitle: 'Enable immersive fullscreen visuals',
+                value: settings.screensaverEnabled,
+                onChanged:
+                    settings.batterySaver
+                        ? null
+                        : settings.setScreensaverEnabled,
+                icon: PhosphorIconsBold.toggleRight,
               ),
               _buildSwitchTile(
                 context: context,
@@ -298,6 +353,15 @@ class SettingsScreen extends StatelessWidget {
               ),
 
               const SizedBox(height: kSp),
+              const Padding(
+                padding: EdgeInsets.only(left: kSp, bottom: kSp),
+                child: Text(
+                  'Theme Mode',
+                  style: TextStyle(fontSize: kTextXs, color: kColorOn2),
+                ),
+              ),
+              _buildThemeModeSelector(settings),
+              const SizedBox(height: kSp * 1.5),
               const Padding(
                 padding: EdgeInsets.only(left: kSp, bottom: kSp),
                 child: Text(
@@ -469,45 +533,6 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 ),
               ],
-
-              const SizedBox(height: kSp * 2),
-
-              _buildSectionHeader('Playback'),
-              _buildSwitchTile(
-                context: context,
-                title: 'Keep Screen On',
-                subtitle: 'Prevent screen from sleeping while app is open',
-                value: settings.keepScreenOn,
-                onChanged: settings.setKeepScreenOn,
-                icon: PhosphorIconsBold.sun,
-              ),
-              ListTile(
-                title: const Text('Audio Focus'),
-                subtitle: Text(
-                  settings.audioFocusMode == 'pause'
-                      ? 'Pause on interruption'
-                      : settings.audioFocusMode == 'duck'
-                      ? 'Lower volume on interruption'
-                      : 'Ignore interruptions',
-                ),
-                leading: Icon(
-                  PhosphorIconsBold.speakerHigh,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-                trailing: DropdownButton<String>(
-                  value: settings.audioFocusMode,
-                  dropdownColor: Theme.of(context).cardColor,
-                  underline: const SizedBox(),
-                  items: const [
-                    DropdownMenuItem(value: 'pause', child: Text('Pause')),
-                    DropdownMenuItem(value: 'duck', child: Text('Duck')),
-                    DropdownMenuItem(value: 'none', child: Text('Ignore')),
-                  ],
-                  onChanged: (v) {
-                    if (v != null) settings.setAudioFocusMode(v);
-                  },
-                ),
-              ),
 
               const SizedBox(height: kSp * 2),
 
@@ -836,9 +861,72 @@ class SettingsScreen extends StatelessWidget {
             value: value,
             onChanged: onChanged,
             secondary: Icon(icon, color: kColorOn, size: kIconMd),
-            activeColor: accentColor,
+            activeThumbColor: accentColor,
+            activeTrackColor: accentColor.withValues(alpha: 0.30),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildThemeModeSelector(SettingsService settings) {
+    final accentColor = Color(settings.accentColor);
+
+    final modes = [
+      {
+        'value': SettingsService.themeClassic,
+        'label': 'Classic',
+        'icon': PhosphorIconsLight.circle,
+      },
+      {
+        'value': SettingsService.themeNeon,
+        'label': 'Neon',
+        'icon': PhosphorIconsBold.sparkle,
+      },
+      {
+        'value': SettingsService.themeAlbumArt,
+        'label': 'Album Art',
+        'icon': PhosphorIconsBold.imageSquare,
+      },
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: kSp * 1.5),
+      child: Wrap(
+        spacing: kSp,
+        children: modes.map((mode) {
+          final value = mode['value'] as String;
+          final selected = settings.themeMode == value;
+          return ChoiceChip(
+            label: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  mode['icon'] as IconData,
+                  size: 16,
+                  color: selected ? Colors.white : kColorOn2,
+                ),
+                const SizedBox(width: 6),
+                Text(value == SettingsService.themeAlbumArt
+                    ? 'Album Art'
+                    : (value == SettingsService.themeNeon ? 'Neon' : 'Classic')),
+              ],
+            ),
+            selected: selected,
+            onSelected: selected
+                ? null
+                : (_) => settings.setThemeMode(value),
+            selectedColor: accentColor.withValues(alpha: 0.24),
+            backgroundColor: Colors.white12,
+            labelStyle: TextStyle(
+              color: selected ? Colors.white : kColorOn2,
+              fontWeight: FontWeight.w600,
+            ),
+            side: BorderSide(
+              color: selected ? accentColor : Colors.white24,
+            ),
+          );
+        }).toList(),
       ),
     );
   }

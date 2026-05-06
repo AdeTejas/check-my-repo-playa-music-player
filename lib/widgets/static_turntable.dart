@@ -2,6 +2,14 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../ui/turntable_painters.dart';
 
+Color _neutralizeTurntableAccent(Color accent) {
+  final hsl = HSLColor.fromColor(accent);
+  return hsl
+      .withSaturation((hsl.saturation * 0.28).clamp(0.0, 1.0))
+      .withLightness((hsl.lightness * 0.74 + 0.16).clamp(0.0, 1.0))
+      .toColor();
+}
+
 class StaticTurntable extends StatelessWidget {
   final ui.Image? labelImage;
   final bool isPlaying;
@@ -10,7 +18,9 @@ class StaticTurntable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accentColor = Theme.of(context).colorScheme.primary;
+    final accentColor = _neutralizeTurntableAccent(
+      Theme.of(context).colorScheme.primary,
+    );
     return Container(
       width: 200,
       height: 200,

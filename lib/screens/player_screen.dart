@@ -1,18 +1,24 @@
+// ignore_for_file: prefer_const_constructors
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'dart:math' as math;
 
 import '../services/player_controller.dart';
 import '../services/settings_service.dart';
 import '../services/database_service.dart';
 import '../models/song_metadata.dart';
 import '../ui/tokens.dart';
+import '../ui/spectrum_analyzer.dart';
 import '../ui/glass_panel.dart';
 import '../ui/turntable_widget.dart';
 import '../ui/waveform_widget.dart';
 import '../ui/lyrics_sheet.dart';
+import 'screensaver_screen.dart';
 import '../utils/ui_utils.dart';
 import '../widgets/player_provider.dart';
 
@@ -77,7 +83,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               children: [
                                 // Left: Turntable
                                 Expanded(
-                                  flex: 5,
+                                  flex: 6,
                                   child: Center(
                                     child: AspectRatio(
                                       aspectRatio: 1.0,
@@ -93,7 +99,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 ),
                                 // Right: Controls
                                 Expanded(
-                                  flex: 4,
+                                  flex: 3,
                                   child: SingleChildScrollView(
                                     padding: const EdgeInsets.all(kSp),
                                     child: Column(
@@ -101,54 +107,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                           MainAxisAlignment.center,
                                       children: [
                                         // Track Info
-                                        Text(
-                                          tag?.title ?? '—',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          textAlign: TextAlign.center,
-                                          style: const TextStyle(
-                                            fontSize: 20,
-                                            fontWeight: FontWeight.w700,
-                                            letterSpacing: -0.5,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          tag?.artist ?? 'Unknown',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          textAlign: TextAlign.center,
-                                          style: const TextStyle(
-                                            color: kColorOn2,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                        if (tag != null)
-                                          _SonicDnaBadge(songId: tag.id),
+                                        _TrackInfoPanel(item: tag, playerCtrl: ctrl),
                                         const SizedBox(height: kSp * 2),
-
-                                        // Waveform
-                                        SizedBox(
+                                        _WaveformSection(
+                                          item: tag,
+                                          player: p,
                                           height: 80,
-                                          child:
-                                              (SettingsService
-                                                          .instance
-                                                          .showWaveforms &&
-                                                      tag != null &&
-                                                      tag.extras?['path'] !=
-                                                          null)
-                                                  ? WaveformWidget(
-                                                    path:
-                                                        tag.extras!['path']
-                                                            as String,
-                                                    player: p,
-                                                    playedColor: Color(
-                                                      SettingsService
-                                                          .instance
-                                                          .accentColor,
-                                                    ),
-                                                  )
-                                                  : const SizedBox(),
                                         ),
                                         const SizedBox(height: kSp * 2),
 
@@ -203,123 +167,41 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                   ),
                                   child: Column(
                                     mainAxisAlignment:
-                                        MainAxisAlignment.spaceEvenly,
+                                        MainAxisAlignment.start,
                                     children: [
                                       const SizedBox(height: kSp),
                                       Expanded(
+                                        flex: 7,
                                         child: Center(
                                           child: AspectRatio(
                                             aspectRatio: 1.0,
                                             child: RepaintBoundary(
-                                              child: TurntableDeck(
-                                                ctrl: ctrl,
-                                                item: tag,
-                                                isVisible: widget.isVisible,
-                                              ),
+                                            child: Stack(
+                                              children: [
+                                                Positioned.fill(
+                                                  child: TurntableDeck(
+                                                    ctrl: ctrl,
+                                                    item: tag,
+                                                    isVisible: widget.isVisible,
+                                                  ),
+                                                ),
+                                              ],
                                             ),
+                                          ),
                                           ),
                                         ),
                                       ),
                                       const SizedBox(height: kSp),
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          const SizedBox(width: 48), // Balance
-                                          Expanded(
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Text(
-                                                  tag?.title ?? '—',
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  textAlign: TextAlign.center,
-                                                  style: const TextStyle(
-                                                    fontSize: 18,
-                                                    fontWeight: FontWeight.w700,
-                                                    letterSpacing: -0.5,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  tag?.artist ?? 'Unknown',
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  textAlign: TextAlign.center,
-                                                  style: const TextStyle(
-                                                    color: kColorOn2,
-                                                    fontSize: 14,
-                                                  ),
-                                                ),
-                                                if (tag != null)
-                                                  _SonicDnaBadge(
-                                                    songId: tag.id,
-                                                  ),
-                                              ],
-                                            ),
-                                          ),
-                                          ValueListenableBuilder<List<String>>(
-                                            valueListenable:
-                                                ctrl.favoritesNotifier,
-                                            builder: (context, favorites, _) {
-                                              final isFav =
-                                                  tag != null &&
-                                                  favorites.contains(tag.id);
-                                              return SizedBox(
-                                                width: 48,
-                                                child: IconButton(
-                                                  onPressed:
-                                                      tag == null
-                                                          ? null
-                                                          : () => ctrl
-                                                              .toggleFavorite(
-                                                                tag.id,
-                                                              ),
-                                                  icon: Icon(
-                                                    isFav
-                                                        ? PhosphorIconsFill
-                                                            .heart
-                                                        : PhosphorIconsRegular
-                                                            .heart,
-                                                    color:
-                                                        isFav
-                                                            ? Colors.redAccent
-                                                            : kColorOn2,
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                        ],
+                                      _TrackInfoPanel(item: tag, playerCtrl: ctrl),
+                                      const SizedBox(height: kSp * 0.75),
+                                      _WaveformSection(
+                                        item: tag,
+                                        player: p,
+                                        height: 56,
                                       ),
-                                      const SizedBox(height: kSp),
-                                      SizedBox(
-                                        height: 60,
-                                        child:
-                                            (SettingsService
-                                                        .instance
-                                                        .showWaveforms &&
-                                                    tag != null &&
-                                                    tag.extras?['path'] != null)
-                                                ? WaveformWidget(
-                                                  path:
-                                                      tag.extras!['path']
-                                                          as String,
-                                                  player: p,
-                                                  playedColor: Color(
-                                                    SettingsService
-                                                        .instance
-                                                        .accentColor,
-                                                  ),
-                                                )
-                                                : const SizedBox(),
-                                      ),
-                                      const SizedBox(height: kSp),
+                                      const SizedBox(height: kSp * 0.75),
                                       _TransportBar(ctrl: ctrl),
-                                      const SizedBox(height: kSp),
+                                      const SizedBox(height: kSp * 0.75),
                                       _SecondaryControls(ctrl: ctrl),
                                       const SizedBox(height: kSp),
                                     ],
@@ -479,86 +361,162 @@ class _TransportBar extends StatelessWidget {
   }
 }
 
-class _SecondaryControls extends StatelessWidget {
+class _SecondaryControls extends StatefulWidget {
   final PlayerController ctrl;
   const _SecondaryControls({required this.ctrl});
 
   @override
-  Widget build(BuildContext context) {
-    final p = ctrl.player;
+  State<_SecondaryControls> createState() => _SecondaryControlsState();
+}
 
-    return Wrap(
-      spacing: kSp,
-      runSpacing: kSp,
-      alignment: WrapAlignment.center,
-      children: [
-        StreamBuilder<bool>(
+class _SecondaryControlsState extends State<_SecondaryControls> {
+  late List<String> _chipOrder;
+  bool _isReordering = false;
+  int? _selectedChipIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _chipOrder = List.from(SettingsService.instance.controlChipOrder);
+  }
+
+  void _reorderChips(int oldIndex, int newIndex) {
+    setState(() {
+      if (oldIndex < newIndex) {
+        newIndex -= 1;
+      }
+      final item = _chipOrder.removeAt(oldIndex);
+      _chipOrder.insert(newIndex, item);
+    });
+    HapticFeedback.selectionClick();
+  }
+
+  Widget _buildChip(String chipId, BuildContext context, int index) {
+    final p = widget.ctrl.player;
+
+    switch (chipId) {
+      case 'shuffle':
+        return StreamBuilder<bool>(
           stream: p.shuffleModeEnabledStream,
           initialData: p.shuffleModeEnabled,
           builder: (_, snap) {
             final shuf = snap.data ?? false;
-            return _ChipIcon(
-              icon:
-                  shuf ? PhosphorIconsFill.shuffle : PhosphorIconsLight.shuffle,
+            return _ReorderableChipIcon(
+              key: const ValueKey('shuffle'),
+              icon: shuf ? PhosphorIconsFill.shuffle : PhosphorIconsLight.shuffle,
               label: 'Shuffle',
               active: shuf,
+              isReordering: _isReordering,
+              isSelected: _selectedChipIndex == index,
               onTap: () async {
-                if (!ctrl.isReady) return;
+                if (_isReordering) {
+                  // In reorder mode, tapping selects this chip for moving
+                  setState(() => _selectedChipIndex = index);
+                  HapticFeedback.selectionClick();
+                  return;
+                }
+                if (!widget.ctrl.isReady) return;
                 await p.setShuffleModeEnabled(!shuf);
                 if (!shuf) await p.shuffle();
                 HapticFeedback.selectionClick();
               },
+              onLongPress: _isReordering ? () {
+                // In reorder mode, long-press moves selected chip here
+                if (_selectedChipIndex != null && _selectedChipIndex != index) {
+                  _reorderChips(_selectedChipIndex!, index);
+                  setState(() => _selectedChipIndex = null);
+                }
+              } : null,
             );
           },
-        ),
-        StreamBuilder<LoopMode>(
+        );
+
+      case 'repeat':
+        return StreamBuilder<LoopMode>(
           stream: p.loopModeStream,
           initialData: p.loopMode,
           builder: (_, snap) {
             final lm = snap.data ?? LoopMode.off;
-            final next =
-                lm == LoopMode.off
-                    ? LoopMode.one
-                    : (lm == LoopMode.one ? LoopMode.all : LoopMode.off);
-            final icon =
-                lm == LoopMode.one
-                    ? PhosphorIconsBold.numberCircleOne
-                    : PhosphorIconsBold.arrowsClockwise;
+            final next = lm == LoopMode.off
+                ? LoopMode.one
+                : (lm == LoopMode.one ? LoopMode.all : LoopMode.off);
+            final icon = lm == LoopMode.one
+                ? PhosphorIconsBold.numberCircleOne
+                : PhosphorIconsBold.arrowsClockwise;
             final active = lm != LoopMode.off;
-            return _ChipIcon(
+            return _ReorderableChipIcon(
+              key: ValueKey('repeat'),
               icon: icon,
-              label:
-                  lm == LoopMode.all
-                      ? 'Repeat All'
-                      : (lm == LoopMode.one ? 'Repeat One' : 'Repeat'),
+              label: lm == LoopMode.all
+                  ? 'Repeat All'
+                  : (lm == LoopMode.one ? 'Repeat One' : 'Repeat'),
               active: active,
+              isReordering: _isReordering,
+              isSelected: _selectedChipIndex == index,
               onTap: () {
-                if (!ctrl.isReady) return;
+                if (_isReordering) {
+                  setState(() => _selectedChipIndex = index);
+                  HapticFeedback.selectionClick();
+                  return;
+                }
+                if (!widget.ctrl.isReady) return;
                 p.setLoopMode(next);
                 HapticFeedback.selectionClick();
               },
+              onLongPress: _isReordering ? () {
+                if (_selectedChipIndex != null && _selectedChipIndex != index) {
+                  _reorderChips(_selectedChipIndex!, index);
+                  setState(() => _selectedChipIndex = null);
+                }
+              } : null,
             );
           },
-        ),
-        _ChipIcon(
+        );
+
+      case 'neural_mix':
+        return _ReorderableChipIcon(
+          key: ValueKey('neural_mix'),
           icon: PhosphorIconsBold.brain,
           label: 'Neural Mix',
           active: false,
+          isReordering: _isReordering,
+          isSelected: _selectedChipIndex == index,
           onTap: () async {
-            if (!ctrl.isReady) return;
+            if (_isReordering) {
+              setState(() => _selectedChipIndex = index);
+              HapticFeedback.selectionClick();
+              return;
+            }
+            if (!widget.ctrl.isReady) return;
             showToast(context, 'Generating Neural Mix...');
-            await ctrl.smartShuffle();
+            await widget.ctrl.smartShuffle();
             if (!context.mounted) return;
             showToast(context, 'Mix Ready');
             HapticFeedback.mediumImpact();
           },
-        ),
-        _ChipIcon(
+          onLongPress: _isReordering ? () {
+            if (_selectedChipIndex != null && _selectedChipIndex != index) {
+              _reorderChips(_selectedChipIndex!, index);
+              setState(() => _selectedChipIndex = null);
+            }
+          } : null,
+        );
+
+      case 'speed':
+        return _ReorderableChipIcon(
+          key: ValueKey('speed'),
           icon: PhosphorIconsBold.gauge,
           label: 'Speed',
           active: false,
+          isReordering: _isReordering,
+          isSelected: _selectedChipIndex == index,
           onTap: () async {
-            if (!ctrl.isReady) return;
+            if (_isReordering) {
+              setState(() => _selectedChipIndex = index);
+              HapticFeedback.selectionClick();
+              return;
+            }
+            if (!widget.ctrl.isReady) return;
             final current = p.speed;
             final picked = await showModalBottomSheet<double>(
               context: context,
@@ -578,15 +536,69 @@ class _SecondaryControls extends StatelessWidget {
               }
             }
           },
-        ),
-        _ChipIcon(
+          onLongPress: _isReordering ? () {
+            if (_selectedChipIndex != null && _selectedChipIndex != index) {
+              _reorderChips(_selectedChipIndex!, index);
+              setState(() => _selectedChipIndex = null);
+            }
+          } : null,
+        );
+
+      case 'screensaver':
+        return AnimatedBuilder(
+          animation: SettingsService.instance,
+          builder: (context, _) {
+            final enabled = SettingsService.instance.screensaverEnabled;
+            return _ReorderableChipIcon(
+              key: ValueKey('screensaver'),
+              icon: Icons.slideshow,
+              label: 'Screensaver',
+              active: enabled,
+              isReordering: _isReordering,
+              isSelected: _selectedChipIndex == index,
+              onTap: () async {
+                if (_isReordering) {
+                  setState(() => _selectedChipIndex = index);
+                  HapticFeedback.selectionClick();
+                  return;
+                }
+                await SettingsService.instance.setScreensaverEnabled(!enabled);
+                HapticFeedback.selectionClick();
+              },
+              onLongPress: () {
+                if (_isReordering) {
+                  if (_selectedChipIndex != null && _selectedChipIndex != index) {
+                    _reorderChips(_selectedChipIndex!, index);
+                    setState(() => _selectedChipIndex = null);
+                  }
+                  return;
+                }
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const ScreensaverScreen(),
+                  ),
+                );
+              },
+            );
+          },
+        );
+
+      case 'bookmark':
+        return _ReorderableChipIcon(
+          key: ValueKey('bookmark'),
           icon: PhosphorIconsBold.bookmarkSimple,
           label: 'Bookmark',
           active: false,
+          isReordering: _isReordering,
+          isSelected: _selectedChipIndex == index,
           onTap: () {
-            if (!ctrl.isReady) return;
+            if (_isReordering) {
+              setState(() => _selectedChipIndex = index);
+              HapticFeedback.selectionClick();
+              return;
+            }
+            if (!widget.ctrl.isReady) return;
 
-            // Show dialog to annotate immediately
             final controller = TextEditingController();
             showDialog(
               context: context,
@@ -619,8 +631,9 @@ class _SecondaryControls extends StatelessWidget {
                       ),
                     ),
                     TextButton(
-                      onPressed: () {
-                        ctrl.addBookmark(note: controller.text);
+                      onPressed: () async {
+                        await widget.ctrl.addBookmark(note: controller.text);
+                        if (!ctx.mounted) return;
                         Navigator.pop(ctx);
                         showToast(context, 'Chapter added');
                         HapticFeedback.selectionClick();
@@ -632,20 +645,111 @@ class _SecondaryControls extends StatelessWidget {
               },
             );
           },
-        ),
-        _ChipIcon(
+          onLongPress: () async {
+            if (_isReordering) {
+              if (_selectedChipIndex != null && _selectedChipIndex != index) {
+                _reorderChips(_selectedChipIndex!, index);
+                setState(() => _selectedChipIndex = null);
+              }
+              return;
+            }
+            if (!widget.ctrl.isReady) return;
+            await widget.ctrl.reloadBookmarks();
+            if (!context.mounted) return;
+            showModalBottomSheet(
+              context: context,
+              backgroundColor: Colors.transparent,
+              builder: (_) => BookmarksSheet(ctrl: widget.ctrl),
+            );
+          },
+        );
+
+      case 'lyrics':
+        return _ReorderableChipIcon(
+          key: ValueKey('lyrics'),
           icon: PhosphorIconsBold.microphoneStage,
           label: 'Lyrics',
           active: false,
+          isReordering: _isReordering,
+          isSelected: _selectedChipIndex == index,
           onTap: () {
-            if (!ctrl.isReady) return;
+            if (_isReordering) {
+              setState(() => _selectedChipIndex = index);
+              HapticFeedback.selectionClick();
+              return;
+            }
+            if (!widget.ctrl.isReady) return;
             showModalBottomSheet(
               context: context,
               isScrollControlled: true,
               backgroundColor: Colors.transparent,
-              builder: (_) => LyricsSheet(ctrl: ctrl),
+              builder: (_) => LyricsSheet(ctrl: widget.ctrl),
             );
           },
+          onLongPress: _isReordering ? () {
+            if (_selectedChipIndex != null && _selectedChipIndex != index) {
+              _reorderChips(_selectedChipIndex!, index);
+              setState(() => _selectedChipIndex = null);
+            }
+          } : null,
+        );
+
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Reorder toggle button
+        Align(
+          alignment: Alignment.centerRight,
+          child: GestureDetector(
+            onLongPress: () {
+              setState(() {
+                _isReordering = !_isReordering;
+                if (!_isReordering) {
+                  _selectedChipIndex = null;
+                }
+              });
+              HapticFeedback.mediumImpact();
+              if (_isReordering) {
+                showToast(context, 'Tap to select, long-press to move');
+              } else {
+                SettingsService.instance.setControlChipOrder(_chipOrder);
+                showToast(context, 'Order saved');
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: _isReordering ? Colors.blue.withValues(alpha: 0.2) : Colors.transparent,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Icon(
+                _isReordering ? Icons.check : Icons.reorder,
+                size: 16,
+                color: _isReordering ? Colors.blue : kColorOn2,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        // Chips
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Wrap(
+            spacing: kSp,
+            runSpacing: kSp,
+            alignment: WrapAlignment.center,
+            children: _chipOrder.asMap().entries.map((entry) {
+              final index = entry.key;
+              final chipId = entry.value;
+              return _buildChip(chipId, context, index);
+            }).toList(),
+          ),
         ),
       ],
     );
@@ -667,45 +771,249 @@ class _IconBtn extends StatelessWidget {
   }
 }
 
-class _ChipIcon extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
+class _TrackInfoPanel extends StatelessWidget {
+  final MediaItem? item;
+  final PlayerController playerCtrl;
 
-  const _ChipIcon({
-    required this.icon,
-    required this.label,
-    required this.active,
-    required this.onTap,
+  const _TrackInfoPanel({required this.item, required this.playerCtrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          item?.title ?? '—',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          item?.artist ?? 'Unknown',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: kColorOn2,
+            fontSize: 16,
+          ),
+        ),
+        if (item != null) _SonicDnaBadge(songId: item!.id),
+        const SizedBox(height: kSp),
+        ValueListenableBuilder<List<String>>(
+          valueListenable: playerCtrl.favoritesNotifier,
+          builder: (context, favorites, _) {
+            final isFav = item != null && favorites.contains(item!.id);
+            return IconButton(
+              onPressed: item == null
+                  ? null
+                  : () => playerCtrl.toggleFavorite(item!.id),
+              icon: Icon(
+                isFav ? PhosphorIconsFill.heart : PhosphorIconsRegular.heart,
+                color: isFav ? Colors.redAccent : kColorOn2,
+                size: 28,
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _WaveformSection extends StatelessWidget {
+  final MediaItem? item;
+  final AudioPlayer player;
+  final double height;
+
+  const _WaveformSection({
+    required this.item,
+    required this.player,
+    this.height = 80,
   });
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: active ? accent.withValues(alpha: 0.2) : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: active ? accent : Colors.white10),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: active ? accent : kColorOn2),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: active ? accent : kColorOn2,
-                fontSize: 12,
-                fontWeight: active ? FontWeight.bold : FontWeight.normal,
+    if (!SettingsService.instance.showWaveforms || item == null) {
+      return const SizedBox();
+    }
+    final path = item!.extras?['path'];
+    if (path is! String || path.isEmpty) {
+      return const SizedBox();
+    }
+
+    return StreamBuilder<Duration>(
+      stream: player.positionStream,
+      builder: (context, posSnapshot) {
+        final position = posSnapshot.data ?? Duration.zero;
+        final duration = player.duration ?? const Duration(seconds: 1);
+        final progress = duration.inMilliseconds > 0
+            ? (position.inMilliseconds / duration.inMilliseconds)
+                .clamp(0.0, 1.0)
+            : 0.0;
+
+        return StreamBuilder<PlayerState>(
+          stream: player.playerStateStream,
+          builder: (context, stateSnapshot) {
+            final isPlaying =
+                stateSnapshot.data?.playing ?? false;
+
+            return SizedBox(
+              height: height + 32,
+              child: Align(
+                alignment: Alignment.center,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final maxW = math.min(560.0, constraints.maxWidth);
+                    return ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: maxW),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            height: height,
+                            child: WaveformWidget(
+                              path: path,
+                              player: player,
+                              playedColor:
+                                  Color(SettingsService.instance.accentColor),
+                              item: item,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          SizedBox(
+                            height: 28,
+                            child: SpectrumAnalyzer(
+                              height: 28,
+                              barColor: Color(
+                                SettingsService.instance.accentColor,
+                              ).withValues(alpha: 0.7),
+                              peakColor: Colors.white,
+                              playbackPosition: progress,
+                              isPlaying: isPlaying,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _ReorderableChipIcon extends StatefulWidget {
+  final IconData icon;
+  final String label;
+  final bool active;
+  final bool isReordering;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  // removed unused onReorder callback (was never provided by callers)
+
+  const _ReorderableChipIcon({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.isReordering,
+    required this.isSelected,
+    required this.onTap,
+    this.onLongPress,
+  });
+
+  @override
+  State<_ReorderableChipIcon> createState() => _ReorderableChipIconState();
+}
+
+class _ReorderableChipIconState extends State<_ReorderableChipIcon> {
+  bool _isDragging = false;
+  Offset _dragOffset = Offset.zero;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+
+    return GestureDetector(
+      onTap: widget.isReordering ? null : widget.onTap,
+      onLongPress: widget.isReordering ? null : widget.onLongPress,
+      onLongPressStart: widget.isReordering ? (details) {
+        setState(() => _isDragging = true);
+        HapticFeedback.mediumImpact();
+      } : null,
+      onLongPressMoveUpdate: widget.isReordering ? (details) {
+        setState(() => _dragOffset = details.localPosition);
+      } : null,
+      onLongPressEnd: widget.isReordering ? (details) {
+        setState(() {
+          _isDragging = false;
+          _dragOffset = Offset.zero;
+        });
+      } : null,
+      child: Transform.translate(
+        offset: _isDragging ? _dragOffset : Offset.zero,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: widget.active
+                ? accent.withValues(alpha: 0.2)
+                : (widget.isSelected
+                    ? Colors.orange.withValues(alpha: 0.3)
+                    : (widget.isReordering ? Colors.blue.withValues(alpha: 0.1) : Colors.transparent)),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: widget.active
+                  ? accent
+                  : (widget.isSelected
+                      ? Colors.orange
+                      : (widget.isReordering ? Colors.blue.withValues(alpha: 0.5) : Colors.white10)),
             ),
-          ],
+            boxShadow: _isDragging ? [
+              BoxShadow(
+                color: Colors.blue.withValues(alpha: 0.3),
+                blurRadius: 8,
+                spreadRadius: 2,
+              ),
+            ] : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.isReordering) ...[
+                Icon(
+                  widget.isSelected ? Icons.radio_button_checked : Icons.drag_indicator,
+                  size: 14,
+                  color: widget.isSelected ? Colors.orange : Colors.blue,
+                ),
+                const SizedBox(width: 4),
+              ],
+              Icon(
+                widget.icon,
+                size: 16,
+                color: widget.active ? accent : kColorOn2,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  color: widget.active ? accent : kColorOn2,
+                  fontSize: 12,
+                  fontWeight: widget.active ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -992,10 +1300,59 @@ class BookmarksSheet extends StatelessWidget {
   final PlayerController ctrl;
   const BookmarksSheet({super.key, required this.ctrl});
 
+  Future<void> _editBookmarkNote(
+    BuildContext context, {
+    required int index,
+    required String initial,
+  }) async {
+    final controller = TextEditingController(text: initial);
+    final accent = Theme.of(context).colorScheme.primary;
+
+    final saved = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: kColorSurface,
+          title: const Text('Edit Chapter'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: InputDecoration(
+              hintText: 'Note (optional)...',
+              hintStyle: const TextStyle(color: Colors.white38),
+              enabledBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: kColorOn2),
+              ),
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: accent),
+              ),
+            ),
+            style: const TextStyle(color: kColorOn),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: kColorOn2)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, controller.text),
+              child: Text('Save', style: TextStyle(color: accent)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (saved == null) return;
+    await ctrl.updateBookmarkNote(index, saved);
+    if (!context.mounted) return;
+    showToast(context, 'Chapter updated');
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bookmarks = ctrl.bookmarks;
     final accent = Theme.of(context).colorScheme.primary;
+
     return GlassPanel(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       borderColor: Colors.white.withValues(alpha: 0.14),
@@ -1011,47 +1368,67 @@ class BookmarksSheet extends StatelessWidget {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ),
-            if (bookmarks.isEmpty)
-              const Expanded(
-                child: Center(
-                  child: Text(
-                    'No chapters added',
-                    style: TextStyle(color: kColorOn2),
-                  ),
-                ),
-              )
-            else
-              Expanded(
-                child: ListView.builder(
-                  itemCount: bookmarks.length,
-                  itemBuilder: (context, index) {
-                    final b = bookmarks[index];
-                    final pos = Duration(milliseconds: b['pos'] as int);
-                    return ListTile(
-                      leading: Text(
-                        _fmt(pos),
-                        style: TextStyle(
-                          color: accent,
-                          fontFamily: 'monospace',
-                        ),
+            Expanded(
+              child: ValueListenableBuilder<List<Map<String, dynamic>>>(
+                valueListenable: ctrl.bookmarksNotifier,
+                builder: (context, bookmarks, _) {
+                  if (bookmarks.isEmpty) {
+                    return const Center(
+                      child: Text(
+                        'No chapters added',
+                        style: TextStyle(color: kColorOn2),
                       ),
-                      title: Text(b['note'] as String),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline, size: 18),
-                        onPressed: () {
-                          ctrl.removeBookmark(index);
-                          Navigator.pop(context);
-                          showToast(context, 'Chapter removed');
-                        },
-                      ),
-                      onTap: () {
-                        ctrl.player.seek(pos);
-                        Navigator.pop(context);
-                      },
                     );
-                  },
-                ),
+                  }
+
+                  return ListView.builder(
+                    itemCount: bookmarks.length,
+                    itemBuilder: (context, index) {
+                      final b = bookmarks[index];
+                      final pos = Duration(milliseconds: (b['pos'] as int?) ?? 0);
+                      return ListTile(
+                        leading: Text(
+                          _fmt(pos),
+                          style: TextStyle(
+                            color: accent,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                        title: Text((b['note'] as String?) ?? ''),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined, size: 18),
+                              onPressed: () async {
+                                await _editBookmarkNote(
+                                  context,
+                                  index: index,
+                                  initial: (b['note'] as String?) ?? '',
+                                );
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, size: 18),
+                              onPressed: () async {
+                                await ctrl.removeBookmark(index);
+                                if (!context.mounted) return;
+                                Navigator.pop(context);
+                                showToast(context, 'Chapter removed');
+                              },
+                            ),
+                          ],
+                        ),
+                        onTap: () {
+                          ctrl.player.seek(pos);
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  );
+                },
               ),
+            ),
           ],
         ),
       ),

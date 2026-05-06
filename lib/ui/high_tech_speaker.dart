@@ -24,6 +24,27 @@ class HighTechSpeaker extends StatefulWidget {
 class _HighTechSpeakerState extends State<HighTechSpeaker>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
+  double _lowBand = 0.0;
+  double _highBand = 0.0;
+  Duration _lastElapsed = Duration.zero;
+
+  double _beatHz() {
+    final v = (widget.bpm ?? 120.0).clamp(55.0, 190.0);
+    return v / 60.0;
+  }
+
+  double _smoothBand(
+    double current,
+    double target,
+    double dtSeconds, {
+    required double tauAttack,
+    required double tauRelease,
+  }) {
+    // One-pole low-pass with separate attack/release constants.
+    final tau = target >= current ? tauAttack : tauRelease;
+    final a = 1.0 - exp(-dtSeconds / max(1e-6, tau));
+    return current + (target - current) * a;
+  }
 
   @override
   void initState() {
@@ -31,13 +52,21 @@ class _HighTechSpeakerState extends State<HighTechSpeaker>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
-    )..repeat();
+    );
+
+    if (widget.isPlaying) {
+      _controller.repeat();
+    }
   }
 
   @override
   void didUpdateWidget(HighTechSpeaker oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // No beat anchoring: visualizer is time-driven, not BPM-driven.
+    if (widget.isPlaying && !_controller.isAnimating) {
+      _controller.repeat();
+    } else if (!widget.isPlaying && _controller.isAnimating) {
+      _controller.stop();
+    }
   }
 
   @override
@@ -56,17 +85,66 @@ class _HighTechSpeakerState extends State<HighTechSpeaker>
         // track position to influence phase when playing.
         final animSeconds =
             ((_controller.lastElapsedDuration?.inMicroseconds ?? 0) / 1e6);
-        final t = (widget.isPlaying ? posSeconds : 0.0) + animSeconds;
-        final idle = !widget.isPlaying;
-        final energy = (idle ? 0.35 : 1.0) * widget.volume.clamp(0.0, 1.0);
+        // When paused/stopped, visualizer must freeze.
+        final t = widget.isPlaying ? (posSeconds + animSeconds) : posSeconds;
 
-        return CustomPaint(
-          size: const Size(double.infinity, 120),
-          painter: _HypnoSpeakerPainter(
-            t: t,
-            isPlaying: widget.isPlaying,
-            energy: energy,
-            accentColor: widget.accentColor,
+        final energy =
+            (widget.isPlaying ? 1.0 : 0.0) * widget.volume.clamp(0.0, 1.0);
+
+        // Super-smooth bands with attack/release behavior.
+        if (widget.isPlaying) {
+          final elapsed = _controller.lastElapsedDuration ?? Duration.zero;
+          final dt = (elapsed - _lastElapsed).inMicroseconds / 1e6;
+          final dtSeconds = dt.isFinite && dt > 0 ? dt : (1 / 60.0);
+          _lastElapsed = elapsed;
+
+          final beatHz = _beatHz();
+
+          // Target bands: low = sub/beat, high = sparkle/transients.
+          // These are *not* true FFT; they are a lightweight proxy that
+          // looks reactive without heavy DSP.
+          final lowTarget =
+              pow(0.5 + 0.5 * sin(2 * pi * beatHz * t), 1.35).toDouble();
+          final highTarget = (0.5 +
+                  0.5 *
+                      sin(
+                        2 * pi * (beatHz * 6.0) * t +
+                            sin(t * 1.73) * 1.20 +
+                            sin(t * 0.23) * 0.90,
+                      ))
+              .clamp(0.0, 1.0);
+
+          _lowBand = _smoothBand(
+            _lowBand,
+            lowTarget,
+            dtSeconds,
+            tauAttack: 0.10,
+            tauRelease: 0.22,
+          );
+          _highBand = _smoothBand(
+            _highBand,
+            highTarget,
+            dtSeconds,
+            tauAttack: 0.06,
+            tauRelease: 0.16,
+          );
+        }
+
+        final lowBand = widget.isPlaying ? _lowBand : 0.0;
+        final highBand = widget.isPlaying ? _highBand : 0.0;
+
+        return SizedBox(
+          height: 120,
+          width: double.infinity,
+          child: CustomPaint(
+            painter: _HypnoSpeakerPainter(
+              t: t,
+              isPlaying: widget.isPlaying,
+              energy: energy,
+              lowBand: lowBand,
+              highBand: highBand,
+              accentColor: widget.accentColor,
+            ),
           ),
         );
       },
@@ -78,6 +156,8 @@ class _HypnoSpeakerPainter extends CustomPainter {
   final double t;
   final bool isPlaying;
   final double energy;
+  final double lowBand;
+  final double highBand;
   final Color accentColor;
 
   static const double _kRibbonIntensityMul = 1.45;
@@ -86,6 +166,8 @@ class _HypnoSpeakerPainter extends CustomPainter {
     required this.t,
     required this.isPlaying,
     required this.energy,
+    required this.lowBand,
+    required this.highBand,
     required this.accentColor,
   });
 
@@ -131,14 +213,122 @@ class _HypnoSpeakerPainter extends CustomPainter {
       Radius.circular(r * 0.22),
     );
 
+    final e = (0.10 + 0.90 * energy).clamp(0.0, 1.0);
+
     // Background panel
     canvas.drawRRect(rect, Paint()..color = const Color(0xFF07090C));
+
+    // High-tech rim: outer bevel + neon edge + inner bevel.
+    final rimOuter = rect;
+    final rimInner = rect.deflate(r * 0.10);
+    final rimNeon = rect.deflate(r * 0.055);
+
+    // Premium depth: subtle outer shadow.
     canvas.drawRRect(
-      rect,
+      rimOuter,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = r * 0.06
-        ..color = const Color(0xFF1E232B),
+        ..strokeWidth = r * 0.085
+        ..color = Colors.black.withValues(alpha: 0.55)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.22),
+    );
+
+    // Outer bevel / metal ring (sweep highlight)
+    final metalRect = rimOuter.outerRect;
+    canvas.drawRRect(
+      rimOuter,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = r * 0.070
+        ..shader = const SweepGradient(
+          center: Alignment.center,
+          startAngle: 0,
+          endAngle: 2 * pi,
+          colors: [
+            Color(0xFF0E1014),
+            Color(0xFF2D3540),
+            Color(0xFF10141B),
+            Color(0xFF3A4656),
+            Color(0xFF0E1014),
+          ],
+          stops: [0.00, 0.22, 0.50, 0.78, 1.00],
+        ).createShader(metalRect),
+    );
+
+    // Specular sweep (premium gloss) - intensity reacts more to highs.
+    final specA = (0.08 + 0.22 * e * (0.35 + 0.65 * highBand)).clamp(0.0, 0.30);
+    canvas.drawRRect(
+      rimOuter.deflate(r * 0.014),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = max(1.0, r * 0.012)
+        ..shader = SweepGradient(
+          center: Alignment.center,
+          startAngle: -pi / 2,
+          endAngle: 3 * pi / 2,
+          colors: [
+            Colors.transparent,
+            Colors.white.withValues(alpha: specA),
+            Colors.transparent,
+          ],
+          stops: const [0.18, 0.25, 0.33],
+          transform: GradientRotation(t * 0.08),
+        ).createShader(metalRect)
+        ..blendMode = BlendMode.plus,
+    );
+
+    // Neon edge (glow-in-the-dark feel)
+    final neonAlpha = (0.22 + 0.48 * e * (0.55 + 0.45 * lowBand)).clamp(
+      0.0,
+      1.0,
+    );
+
+    // Outer halo (wide, soft) - feels like charged phosphor.
+    canvas.drawRRect(
+      rimNeon,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = r * 0.060
+        ..color = accentColor.withValues(
+          alpha: (neonAlpha * 0.35).clamp(0.0, 0.40),
+        )
+        ..blendMode = BlendMode.plus
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.28),
+    );
+    canvas.drawRRect(
+      rimNeon,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = r * 0.030
+        ..color = accentColor.withValues(alpha: neonAlpha)
+        ..blendMode = BlendMode.plus
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.11),
+    );
+    canvas.drawRRect(
+      rimNeon,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = max(1.0, r * 0.010)
+        ..shader = LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            Colors.transparent,
+            Colors.white.withValues(alpha: (neonAlpha * 0.55).clamp(0.0, 0.55)),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.5, 1.0],
+        ).createShader(rimNeon.outerRect)
+        ..blendMode = BlendMode.plus,
+    );
+
+    // Inner bevel
+    canvas.drawRRect(
+      rimInner,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = r * 0.030
+        ..color = const Color(0xFF1E232B).withValues(alpha: 0.95),
     );
 
     canvas.save();
@@ -149,9 +339,19 @@ class _HypnoSpeakerPainter extends CustomPainter {
       rect.left + rect.width / 2,
       rect.top + rect.height / 2,
     );
-    final e = (0.12 + 0.88 * energy).clamp(0.0, 1.0);
     final slow = t * 2 * pi * 0.20;
     final fast = t * 2 * pi * 0.75;
+
+    // Premium interior vignette (adds depth).
+    final vignetteRect = inner.outerRect;
+    canvas.drawRect(
+      vignetteRect,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [Colors.transparent, Colors.black.withValues(alpha: 0.55)],
+          stops: const [0.55, 1.0],
+        ).createShader(vignetteRect),
+    );
 
     // Hypnotic "ribbons" (no rings/arcs/sweep)
     final ribbonArea = Rect.fromLTWH(
@@ -165,21 +365,25 @@ class _HypnoSpeakerPainter extends CustomPainter {
       final fi = i.toDouble();
       final yBase =
           ribbonArea.top + ribbonArea.height * (0.18 + 0.64 * (fi / (ribbons)));
-      final amp = ribbonArea.height * (0.06 + 0.12 * e) * (1.0 - fi * 0.10);
+      final amp =
+          ribbonArea.height *
+          (0.05 + 0.13 * e * (0.55 + 0.45 * lowBand)) *
+          (1.0 - fi * 0.10);
       final phase = slow + fi * 1.7;
       final freq = 1.2 + fi * 0.35;
-      final wobble = 0.55 + 0.45 * sin(fast + fi);
+      final wobble = 0.55 + 0.45 * sin((fast * 0.85) + fi + highBand * 1.25);
 
       // Build smooth spline points.
-      const steps = 64;
+      const steps = 92;
       final pts = <Offset>[];
       for (int s = 0; s <= steps; s++) {
         final nx = (s / steps);
         final x = ribbonArea.left + ribbonArea.width * nx;
         final env = 0.22 + 0.78 * sin(pi * nx);
 
-        // Slow drift prevents a "tileable" loop feel.
-        final drift = sin((t * 0.07) + fi * 0.9) * ribbonArea.height * 0.015;
+        // Drift & shimmer; pauses at 0 when not playing.
+        final drift =
+            sin((t * 0.07) + fi * 0.9) * ribbonArea.height * 0.012 * e;
         final y =
             yBase +
             drift +
@@ -190,9 +394,9 @@ class _HypnoSpeakerPainter extends CustomPainter {
       }
       final path = _catmullRom(pts);
 
-      final alpha = ((isPlaying ? 0.86 : 0.52) *
+      final alpha = ((isPlaying ? 0.88 : 0.0) *
               (0.65 + 0.35 * wobble) *
-              0.85 *
+              (0.55 + 0.45 * e) *
               _kRibbonIntensityMul)
           .clamp(0.0, 1.0);
       final strokeW = ribbonArea.height * (0.10 - fi * 0.010);
@@ -223,7 +427,7 @@ class _HypnoSpeakerPainter extends CustomPainter {
           ..blendMode = BlendMode.plus
           ..maskFilter = MaskFilter.blur(
             BlurStyle.normal,
-            r * 0.187 * _kRibbonIntensityMul,
+            r * (0.165 + 0.070 * highBand) * _kRibbonIntensityMul,
           ),
       );
       // Highlight pass (thin and crisp)
@@ -234,7 +438,7 @@ class _HypnoSpeakerPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeCap = StrokeCap.round
           ..strokeJoin = StrokeJoin.round
-          ..strokeWidth = max(1.0, strokeW * 0.22)
+          ..strokeWidth = max(1.0, strokeW * 0.18)
           ..shader = LinearGradient(
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
@@ -250,10 +454,9 @@ class _HypnoSpeakerPainter extends CustomPainter {
     }
 
     // Diaphragm "breath" in the center
-    final breath = 0.5 + 0.5 * sin(fast * 0.9);
-    final diaphragmR = r * (0.18 + 0.03 * breath * e);
-    final glowA =
-        (isPlaying ? 0.655 : 0.374) * (0.55 + 0.45 * breath) * e * 0.85;
+    final breath = isPlaying ? lowBand : 0.0;
+    final diaphragmR = r * (0.18 + 0.040 * breath * e);
+    final glowA = (isPlaying ? 0.80 : 0.0) * (0.55 + 0.45 * breath) * e * 0.98;
     final diaphragmRect = Rect.fromCircle(center: center, radius: diaphragmR);
     canvas.drawCircle(
       center,
@@ -297,7 +500,10 @@ class _HypnoSpeakerPainter extends CustomPainter {
       );
       final tw = 0.5 + 0.5 * sin(fast + i * 0.7);
       final a =
-          (isPlaying ? 0.172 : 0.109) * _smoothstep(0.0, 1.0, tw) * e * 0.85;
+          (isPlaying ? 0.18 : 0.0) *
+          _smoothstep(0.0, 1.0, tw) *
+          e *
+          (0.55 + 0.45 * highBand);
       grainPaint.color = Colors.white.withValues(alpha: a.clamp(0.0, 0.125));
       canvas.drawCircle(p, r * (0.010 + 0.010 * _hash(i + 99.0)), grainPaint);
     }
@@ -307,6 +513,11 @@ class _HypnoSpeakerPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _HypnoSpeakerPainter oldDelegate) {
-    return true;
+    return t != oldDelegate.t ||
+        isPlaying != oldDelegate.isPlaying ||
+        energy != oldDelegate.energy ||
+        lowBand != oldDelegate.lowBand ||
+        highBand != oldDelegate.highBand ||
+        accentColor != oldDelegate.accentColor;
   }
 }

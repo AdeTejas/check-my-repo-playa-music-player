@@ -20,6 +20,15 @@ Flutter local-audio player (Windows + Android). Start with `lib/main.dart` for a
 - Android external “open with” intents are handled by `IntentHandler` (`lib/services/intent_handler.dart`) and forwarded to `PlayerController.playExternalFile()` (see `lib/main.dart`).
 - Android-only EQ uses `EqualizerService` + audio session id from `just_audio` (wired in `PlayerController`).
 
+## Common Pitfalls
+- Missing `sqfliteFfiInit()` on desktop: Crash on DB access. Call in main() before DatabaseService.init().
+- MethodChannel failures on cold start: Silent failures. Wrap all channel calls in try-catch.
+- ChangeNotifier listener leaks: Memory leaks. removeListener in dispose().
+- Equalizer not initialized: EQ has no effect. Obtain audio_session id after player init, wire to EqualizerService.
+- Wrong just_audio backend on Windows: Codec failures. Use JustAudioMediaKit, not default just_audio.
+- Hardcoded SharedPreferences keys: State restore broken after rename. Track key names when refactoring.
+- Missing artwork cache initialization: Blank artwork. ArtworkCacheService must init disk dir async before play.
+
 ## Developer Workflows (PowerShell)
 ```powershell
 flutter pub get

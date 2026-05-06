@@ -21,11 +21,7 @@ class WindowsAudioQuery {
         '.aac',
         '.wav',
         '.flac',
-        '.ogg',
         '.wma',
-        '.opus',
-        '.aiff',
-        '.alac',
       };
     }
     return exts

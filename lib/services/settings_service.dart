@@ -8,6 +8,22 @@ class SettingsService extends ChangeNotifier {
   static final SettingsService _instance = SettingsService._();
   static SettingsService get instance => _instance;
 
+  static const String themeClassic = 'classic';
+  static const String themeNeon = 'neon';
+  static const String themeAlbumArt = 'albumArt';
+
+  // Color Palette - Expanse/Sci-Fi Inspired with Vibrant Accents
+  static const Map<String, int> colorPresets = {
+    'Coruscant Cyan': 0xFF00E5FF, // Bright cyan metallic
+    'Eros Gold': 0xFFFFD700, // Rich warm gold
+    'Ceres Purple': 0xFF9D4EDD, // Deep mystic purple
+    'Tycho Station Blue': 0xFF0095FF, // Electric blue
+    'Ganymede Magenta': 0xFFFF00FF, // Hot magenta
+    'Vesta Red': 0xFFFF4444, // Vibrant red
+    'Ilus Green': 0xFF00FF88, // Neon green
+    'Laconia Violet': 0xFF7B68EE, // Medium blue-violet
+  };
+
   SettingsService._();
 
   late SharedPreferences _prefs;
@@ -18,6 +34,8 @@ class SettingsService extends ChangeNotifier {
   bool _showSpaceBackground = true;
   bool _highQualityBlur = true;
   bool _showWaveforms = true;
+  bool _screensaverEnabled = false;
+  int _screensaverIdleSeconds = 60;
   bool _keepScreenOn = false;
   String _audioFocusMode = 'pause'; // 'pause', 'duck', 'none'
 
@@ -27,6 +45,7 @@ class SettingsService extends ChangeNotifier {
   bool _replayGainEnabled = false;
   bool _smartVolumeLimiterEnabled = false;
   int _accentColor = 0xFF00E5FF; // Default Coruscant-inspired (cyan metallic)
+  String _themeMode = themeClassic;
 
   // Turntable settings
   int _turntablePerfTier = 2; // 0=off, 1=minimal, 2=full
@@ -52,11 +71,29 @@ class SettingsService extends ChangeNotifier {
     'alac',
   ];
 
+  // Control chips ordering
+  List<String> _controlChipOrder = const <String>[
+    'shuffle',
+    'repeat',
+    'neural_mix',
+    'speed',
+    'screensaver',
+    'bookmark',
+    'lyrics',
+  ];
+
+  // Theme customization colors
+  int _glowColor = 0xFF00E5FF; // Default cyan glow
+  int _vinylColor = 0xFF1A1A1A; // Default dark vinyl
+  int _plinthColor = 0xFF2A2A2A; // Default dark plinth
+
   bool get batterySaver => _batterySaver;
   bool get lowPerformanceMode => _lowPerformanceMode;
   bool get showSpaceBackground => _showSpaceBackground;
   bool get highQualityBlur => _highQualityBlur;
   bool get showWaveforms => _showWaveforms;
+  bool get screensaverEnabled => _screensaverEnabled;
+  int get screensaverIdleSeconds => _screensaverIdleSeconds;
   bool get keepScreenOn => _keepScreenOn;
   String get audioFocusMode => _audioFocusMode;
   int get crossfadeSeconds => _crossfadeSeconds;
@@ -64,6 +101,10 @@ class SettingsService extends ChangeNotifier {
   bool get replayGainEnabled => _replayGainEnabled;
   bool get smartVolumeLimiterEnabled => _smartVolumeLimiterEnabled;
   int get accentColor => _accentColor;
+  String get themeMode => _themeMode;
+  bool get isClassicTheme => _themeMode == themeClassic;
+  bool get isNeonTheme => _themeMode == themeNeon;
+  bool get isAlbumArtTheme => _themeMode == themeAlbumArt;
   int get turntablePerfTier => _turntablePerfTier;
   bool get turntableSlipmatEnabled => _turntableSlipmatEnabled;
   bool get turntableNeedleDropEnabled => _turntableNeedleDropEnabled;
@@ -73,6 +114,10 @@ class SettingsService extends ChangeNotifier {
   bool get windowsScanRecursive => _windowsScanRecursive;
   List<String> get windowsScanExtensions =>
       List.unmodifiable(_windowsScanExtensions);
+  List<String> get controlChipOrder => List.unmodifiable(_controlChipOrder);
+  int get glowColor => _glowColor;
+  int get vinylColor => _vinylColor;
+  int get plinthColor => _plinthColor;
 
   bool get expensiveEffectsEnabled => !_batterySaver && !_lowPerformanceMode;
   bool get effectiveShowSpaceBackground =>
@@ -80,6 +125,8 @@ class SettingsService extends ChangeNotifier {
   bool get effectiveHighQualityBlur =>
       _highQualityBlur && expensiveEffectsEnabled;
   bool get effectiveShowWaveforms => _showWaveforms && expensiveEffectsEnabled;
+  bool get effectiveScreensaverEnabled =>
+      _screensaverEnabled && expensiveEffectsEnabled;
 
   Future<void> init() async {
     if (_initialized) return;
@@ -88,6 +135,9 @@ class SettingsService extends ChangeNotifier {
     _showSpaceBackground = _prefs.getBool('showSpaceBackground') ?? true;
     _highQualityBlur = _prefs.getBool('highQualityBlur') ?? true;
     _showWaveforms = _prefs.getBool('showWaveforms') ?? true;
+    _screensaverEnabled = _prefs.getBool('screensaverEnabled') ?? false;
+    _screensaverIdleSeconds = (_prefs.getInt('screensaverIdleSeconds') ?? 60)
+        .clamp(15, 600);
     _keepScreenOn = _prefs.getBool('keepScreenOn') ?? false;
     if (_keepScreenOn) {
       WakelockPlus.enable();
@@ -100,6 +150,7 @@ class SettingsService extends ChangeNotifier {
     _smartVolumeLimiterEnabled =
         _prefs.getBool('smartVolumeLimiterEnabled') ?? false;
     _accentColor = _prefs.getInt('accentColor') ?? 0xFF00E5FF;
+    _themeMode = _prefs.getString('themeMode') ?? themeClassic;
 
     _turntablePerfTier = (_prefs.getInt('turntablePerfTier') ?? 2).clamp(0, 2);
     _turntableSlipmatEnabled =
@@ -115,6 +166,20 @@ class SettingsService extends ChangeNotifier {
     _windowsScanRecursive = _prefs.getBool('windowsScanRecursive') ?? true;
     _windowsScanExtensions =
         _prefs.getStringList('windowsScanExtensions') ?? _windowsScanExtensions;
+
+    _controlChipOrder = _prefs.getStringList('controlChipOrder') ??
+        const <String>[
+          'shuffle',
+          'repeat',
+          'neural_mix',
+          'speed',
+          'screensaver',
+          'bookmark',
+          'lyrics',
+        ];
+    _glowColor = _prefs.getInt('glowColor') ?? 0xFF00E5FF;
+    _vinylColor = _prefs.getInt('vinylColor') ?? 0xFF1A1A1A;
+    _plinthColor = _prefs.getInt('plinthColor') ?? 0xFF2A2A2A;
 
     // Check for low performance mode preference, or auto-detect if not set
     if (_prefs.containsKey('lowPerformanceMode')) {
@@ -183,9 +248,11 @@ class SettingsService extends ChangeNotifier {
       _showSpaceBackground = false;
       _highQualityBlur = false;
       _showWaveforms = false;
+      _screensaverEnabled = false;
       await _prefs.setBool('showSpaceBackground', false);
       await _prefs.setBool('highQualityBlur', false);
       await _prefs.setBool('showWaveforms', false);
+      await _prefs.setBool('screensaverEnabled', false);
     } else {
       // Restore features when disabling low performance mode
       // We default to true for a better experience, or we could store previous state
@@ -218,6 +285,15 @@ class SettingsService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setThemeMode(String value) async {
+    final normalized = (value == themeNeon || value == themeAlbumArt)
+        ? value
+        : themeClassic;
+    _themeMode = normalized;
+    await _prefs.setString('themeMode', normalized);
+    notifyListeners();
+  }
+
   Future<void> setTurntablePerfTier(int value) async {
     final v = value.clamp(0, 2);
     _turntablePerfTier = v;
@@ -245,10 +321,12 @@ class SettingsService extends ChangeNotifier {
       _showSpaceBackground = false;
       _highQualityBlur = false;
       _showWaveforms = false;
+      _screensaverEnabled = false;
       _keepScreenOn = false; // Disable wakelock for battery saving
       await _prefs.setBool('showSpaceBackground', false);
       await _prefs.setBool('highQualityBlur', false);
       await _prefs.setBool('showWaveforms', false);
+      await _prefs.setBool('screensaverEnabled', false);
       await _prefs.setBool('keepScreenOn', false);
       WakelockPlus.disable(); // Immediately disable if active
     } else {
@@ -266,6 +344,19 @@ class SettingsService extends ChangeNotifier {
   Future<void> setShowWaveforms(bool value) async {
     _showWaveforms = value;
     await _prefs.setBool('showWaveforms', value);
+    notifyListeners();
+  }
+
+  Future<void> setScreensaverEnabled(bool value) async {
+    _screensaverEnabled = value;
+    await _prefs.setBool('screensaverEnabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setScreensaverIdleSeconds(int seconds) async {
+    final v = seconds.clamp(15, 600);
+    _screensaverIdleSeconds = v;
+    await _prefs.setInt('screensaverIdleSeconds', v);
     notifyListeners();
   }
 
@@ -310,6 +401,30 @@ class SettingsService extends ChangeNotifier {
         .toSet()
         .toList(growable: false);
     await _prefs.setStringList('windowsScanExtensions', _windowsScanExtensions);
+    notifyListeners();
+  }
+
+  Future<void> setControlChipOrder(List<String> order) async {
+    _controlChipOrder = List.unmodifiable(order);
+    await _prefs.setStringList('controlChipOrder', order);
+    notifyListeners();
+  }
+
+  Future<void> setGlowColor(int color) async {
+    _glowColor = color;
+    await _prefs.setInt('glowColor', color);
+    notifyListeners();
+  }
+
+  Future<void> setVinylColor(int color) async {
+    _vinylColor = color;
+    await _prefs.setInt('vinylColor', color);
+    notifyListeners();
+  }
+
+  Future<void> setPlinthColor(int color) async {
+    _plinthColor = color;
+    await _prefs.setInt('plinthColor', color);
     notifyListeners();
   }
 }
