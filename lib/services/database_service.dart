@@ -39,7 +39,7 @@ class DatabaseService {
 
     _db = await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -56,7 +56,11 @@ class DatabaseService {
         last_played INTEGER,
         bpm REAL,
         key TEXT,
-        dna_sig TEXT
+        dna_sig TEXT,
+        bpm_source TEXT,
+        bpm_confidence REAL,
+        key_source TEXT,
+        dna_manual INTEGER DEFAULT 0
       )
     ''');
 
@@ -94,11 +98,31 @@ class DatabaseService {
         // Column may already exist.
       }
     }
+
+    if (oldVersion < 4) {
+      for (final sql in const [
+        'ALTER TABLE song_metadata ADD COLUMN bpm_source TEXT',
+        'ALTER TABLE song_metadata ADD COLUMN bpm_confidence REAL',
+        'ALTER TABLE song_metadata ADD COLUMN key_source TEXT',
+        'ALTER TABLE song_metadata ADD COLUMN dna_manual INTEGER DEFAULT 0',
+      ]) {
+        try {
+          await db.execute(sql);
+        } catch (_) {
+          // Column may already exist.
+        }
+      }
+    }
   }
 
   // ═══ Song Metadata ═══
 
   SongMetadata _mapToSongMetadata(Map<String, Object?> map) {
+    double? asDouble(Object? value) {
+      if (value is num) return value.toDouble();
+      return null;
+    }
+
     return SongMetadata(
       id: map['song_id'] as String,
       rating: map['rating'] as int?,
@@ -108,9 +132,13 @@ class DatabaseService {
           map['last_played'] != null
               ? DateTime.fromMillisecondsSinceEpoch(map['last_played'] as int)
               : null,
-      bpm: map['bpm'] as double?,
+      bpm: asDouble(map['bpm']),
       key: map['key'] as String?,
       dnaSignature: map['dna_sig'] as String?,
+      bpmSource: map['bpm_source'] as String?,
+      bpmConfidence: asDouble(map['bpm_confidence']),
+      keySource: map['key_source'] as String?,
+      isManualDna: (map['dna_manual'] as int? ?? 0) == 1,
     );
   }
 
@@ -283,12 +311,21 @@ class DatabaseService {
     double? bpm,
     String? key,
     String? dnaSignature,
+    String? source,
+    double? confidence,
+    bool manual = false,
   }) async {
     if (kIsWeb || _db == null) return;
     final values = <String, Object?>{};
     if (bpm != null) values['bpm'] = bpm;
     if (key != null) values['key'] = key;
     if (dnaSignature != null) values['dna_sig'] = dnaSignature;
+    if (source != null && bpm != null) values['bpm_source'] = source;
+    if (source != null && key != null) values['key_source'] = source;
+    if (confidence != null && bpm != null) {
+      values['bpm_confidence'] = confidence;
+    }
+    if (manual) values['dna_manual'] = 1;
     if (values.isEmpty) return;
 
     final rows = await _db!.update(
@@ -308,6 +345,10 @@ class DatabaseService {
         bpm: bpm,
         key: key,
         dnaSignature: dnaSignature,
+        bpmSource: source != null && bpm != null ? source : null,
+        bpmConfidence: confidence != null && bpm != null ? confidence : null,
+        keySource: source != null && key != null ? source : null,
+        isManualDna: manual ? true : null,
       ),
     );
   }
@@ -329,25 +370,7 @@ class DatabaseService {
       orderBy: 'play_count DESC',
       limit: limit,
     );
-    return maps
-        .map(
-          (map) => SongMetadata(
-            id: map['song_id'] as String,
-            rating: map['rating'] as int?,
-            lyrics: map['lyrics'] as String?,
-            playCount: map['play_count'] as int? ?? 0,
-            lastPlayed:
-                map['last_played'] != null
-                    ? DateTime.fromMillisecondsSinceEpoch(
-                      map['last_played'] as int,
-                    )
-                    : null,
-            bpm: map['bpm'] as double?,
-            key: map['key'] as String?,
-            dnaSignature: map['dna_sig'] as String?,
-          ),
-        )
-        .toList();
+    return maps.map(_mapToSongMetadata).toList();
   }
 
   Future<List<SongMetadata>> getRecentlyPlayed({int limit = 20}) async {
@@ -357,25 +380,7 @@ class DatabaseService {
       orderBy: 'last_played DESC',
       limit: limit,
     );
-    return maps
-        .map(
-          (map) => SongMetadata(
-            id: map['song_id'] as String,
-            rating: map['rating'] as int?,
-            lyrics: map['lyrics'] as String?,
-            playCount: map['play_count'] as int? ?? 0,
-            lastPlayed:
-                map['last_played'] != null
-                    ? DateTime.fromMillisecondsSinceEpoch(
-                      map['last_played'] as int,
-                    )
-                    : null,
-            bpm: map['bpm'] as double?,
-            key: map['key'] as String?,
-            dnaSignature: map['dna_sig'] as String?,
-          ),
-        )
-        .toList();
+    return maps.map(_mapToSongMetadata).toList();
   }
 
   // ═══ Playlists ═══

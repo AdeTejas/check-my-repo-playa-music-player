@@ -10,11 +10,11 @@ void main() {
 
     test('add bookmark creates entry with position and note', () async {
       final prefs = await SharedPreferences.getInstance();
-      final testId = 'test_song_123';
-      final key = 'bookmarks_$testId';
+      const testId = 'test_song_123';
+      const key = 'bookmarks_$testId';
 
       // Simulate adding a bookmark
-      final bookmark = {'pos': 120000, 'note': 'Great chorus'};
+      const bookmark = {'pos': 120000, 'note': 'Great chorus'};
       final encoded = jsonEncode(bookmark);
       await prefs.setStringList(key, [encoded]);
 
@@ -28,8 +28,8 @@ void main() {
 
     test('reload bookmark list retrieves all stored bookmarks', () async {
       final prefs = await SharedPreferences.getInstance();
-      final testId = 'test_song_456';
-      final key = 'bookmarks_$testId';
+      const testId = 'test_song_456';
+      const key = 'bookmarks_$testId';
 
       // Add multiple bookmarks
       final bookmarks = [
@@ -43,14 +43,15 @@ void main() {
       final saved = prefs.getStringList(key) ?? [];
       expect(saved.length, equals(3));
 
-      final decoded = saved.map((s) => jsonDecode(s) as Map<String, dynamic>).toList();
+      final decoded =
+          saved.map((s) => jsonDecode(s) as Map<String, dynamic>).toList();
       expect(decoded[0]['note'], equals('Intro'));
       expect(decoded[1]['note'], equals('Verse'));
       expect(decoded[2]['note'], equals('Chorus'));
     });
 
     test('jump-to-bookmark returns correct position', () async {
-      final bookmarks = [
+      const bookmarks = [
         {'pos': 10000, 'note': 'Intro'},
         {'pos': 60000, 'note': 'Verse'},
         {'pos': 120000, 'note': 'Chorus'},
@@ -63,8 +64,8 @@ void main() {
 
     test('bookmark persistence survives app restart', () async {
       final prefs = await SharedPreferences.getInstance();
-      final testId = 'test_song_789';
-      final key = 'bookmarks_$testId';
+      const testId = 'test_song_789';
+      const key = 'bookmarks_$testId';
 
       // Save bookmarks before "restart"
       final bookmarks = [
@@ -84,7 +85,7 @@ void main() {
 
     test('handle malformed bookmark data gracefully', () {
       // Test parsing of old format (just milliseconds)
-      final legacyBookmark = '45000';
+      const legacyBookmark = '45000';
       final ms = int.tryParse(legacyBookmark);
       expect(ms, equals(45000));
 
@@ -96,14 +97,14 @@ void main() {
 
     test('bookmark update changes note without losing position', () async {
       final prefs = await SharedPreferences.getInstance();
-      final testId = 'test_song_update';
-      final key = 'bookmarks_$testId';
+      const testId = 'test_song_update';
+      const key = 'bookmarks_$testId';
 
-      final bookmark = {'pos': 90000, 'note': 'Old note'};
+      const bookmark = {'pos': 90000, 'note': 'Old note'};
       await prefs.setStringList(key, [jsonEncode(bookmark)]);
 
       // Update note
-      final updated = {'pos': 90000, 'note': 'New note'};
+      const updated = {'pos': 90000, 'note': 'New note'};
       await prefs.setStringList(key, [jsonEncode(updated)]);
 
       final saved = prefs.getStringList(key) ?? [];
@@ -114,8 +115,8 @@ void main() {
 
     test('removing bookmark decreases list count', () async {
       final prefs = await SharedPreferences.getInstance();
-      final testId = 'test_song_remove';
-      final key = 'bookmarks_$testId';
+      const testId = 'test_song_remove';
+      const key = 'bookmarks_$testId';
 
       final bookmarks = [
         jsonEncode({'pos': 10000, 'note': 'A'}),
@@ -134,8 +135,8 @@ void main() {
 
     test('empty bookmark list returns empty when no bookmarks exist', () async {
       final prefs = await SharedPreferences.getInstance();
-      final testId = 'test_song_empty';
-      final key = 'bookmarks_$testId';
+      const testId = 'test_song_empty';
+      const key = 'bookmarks_$testId';
 
       final saved = prefs.getStringList(key) ?? [];
       expect(saved.isEmpty, isTrue);

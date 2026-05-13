@@ -70,7 +70,8 @@ class TelemetryService {
       final timings = entry.value;
       summary[entry.key] = {
         'count': timings.length,
-        'avg_ms': (timings.reduce((a, b) => a + b) / timings.length).toStringAsFixed(2),
+        'avg_ms': (timings.reduce((a, b) => a + b) / timings.length)
+            .toStringAsFixed(2),
         'min_ms': timings.reduce((a, b) => a < b ? a : b),
         'max_ms': timings.reduce((a, b) => a > b ? a : b),
       };

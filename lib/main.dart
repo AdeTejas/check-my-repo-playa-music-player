@@ -1,4 +1,4 @@
-﻿// lib/main.dart
+// lib/main.dart
 // Playa - The Real Deal Edition
 // ignore_for_file: prefer_const_declarations
 
@@ -21,11 +21,13 @@ import 'ui/glass_panel.dart';
 import 'screens/equalizer_screen.dart';
 import 'screens/library_page.dart';
 import 'screens/player_screen.dart';
+import 'screens/screensaver_screen.dart';
 import 'services/library_scan_service.dart';
 import 'services/settings_service.dart';
 import 'services/database_service.dart';
 import 'services/player_controller.dart';
 import 'ui/deep_space_background.dart';
+import 'widgets/mini_player.dart';
 import 'widgets/player_provider.dart';
 
 // Debug drawing for turntable painter (set with --dart-define=DEV_TT_GUIDES=true)
@@ -42,11 +44,23 @@ const bool kAutoPlaybackTest = bool.fromEnvironment(
 
 /* ========================= THEME & TOKENS ========================= */
 
-const _bg = Color(0xFF06070A);
-const _surface = Color(0xFF14161B);
-const _card = Color(0xFF1B1F26);
-const _on = Color(0xFFE8DCCA); // Light Wood/Beige for text
-const _on2 = Color(0xFFA68B6C); // Muted Wood for secondary text
+const _bg = Color(0xFF010104);
+const _surface = Color(0xFF090A0E);
+const _card = Color(0xFF11131A);
+const _on = Color(0xFFFFE7D0); // Saturated warm paper text
+const _on2 = Color(0xFFC89B73); // Rich bronze secondary text
+
+Color _effectiveAccent(SettingsService settings) {
+  final accent = Color(settings.accentColor);
+  if (settings.themeMode == SettingsService.themeNeon) {
+    final hsl = HSLColor.fromColor(accent);
+    return hsl
+        .withSaturation((hsl.saturation * 1.28).clamp(0.82, 1.0))
+        .withLightness((hsl.lightness * 0.98).clamp(0.28, 0.48))
+        .toColor();
+  }
+  return accent;
+}
 
 Future<void> main([List<String> args = const []]) async {
   PerfMetricsService.instance.markAppStart();
@@ -68,6 +82,7 @@ Future<void> main([List<String> args = const []]) async {
   }
 
   WidgetsFlutterBinding.ensureInitialized();
+  PerfMetricsService.instance.startFrameTelemetry();
   await SettingsService.instance.init(); // Initialize Settings
   await DatabaseService.instance.init(); // Initialize Database
 
@@ -156,6 +171,8 @@ class PlayaApp extends StatelessWidget {
     return AnimatedBuilder(
       animation: SettingsService.instance,
       builder: (context, _) {
+        final settings = SettingsService.instance;
+        final accent = _effectiveAccent(settings);
         final base = ThemeData(
           useMaterial3: true,
           brightness: Brightness.dark,
@@ -170,7 +187,7 @@ class PlayaApp extends StatelessWidget {
           theme: base.copyWith(
             colorScheme: ColorScheme.dark(
               surface: _surface,
-              primary: Color(SettingsService.instance.accentColor),
+              primary: accent,
               onSurface: _on,
             ),
             textTheme: GoogleFonts.exo2TextTheme(
@@ -217,8 +234,8 @@ class PlayaApp extends StatelessWidget {
             sliderTheme: base.sliderTheme.copyWith(
               trackHeight: 3,
               inactiveTrackColor: Colors.white24,
-              activeTrackColor: Color(SettingsService.instance.accentColor),
-              thumbColor: Color(SettingsService.instance.accentColor),
+              activeTrackColor: accent,
+              thumbColor: accent,
               overlayShape: SliderComponentShape.noOverlay,
             ),
           ),
@@ -239,12 +256,16 @@ class _Shell extends StatefulWidget {
 
 class _ShellState extends State<_Shell> {
   int _tab = 0;
+  Timer? _screensaverTimer;
+  bool _screensaverVisible = false;
 
   @override
   void initState() {
     super.initState();
+    SettingsService.instance.addListener(_resetScreensaverTimer);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PerfMetricsService.instance.markFirstFrame();
+      _resetScreensaverTimer();
     });
 
     // Handle any pending intent data from app launch
@@ -259,6 +280,52 @@ class _ShellState extends State<_Shell> {
         Future.microtask(() => _runAutoPlaybackTest(PlayerController.ensure()));
       }
     });
+  }
+
+  @override
+  void dispose() {
+    SettingsService.instance.removeListener(_resetScreensaverTimer);
+    _screensaverTimer?.cancel();
+    super.dispose();
+  }
+
+  void _handleUserActivity(PointerEvent _) {
+    if (!_screensaverVisible) _resetScreensaverTimer();
+  }
+
+  void _resetScreensaverTimer() {
+    _screensaverTimer?.cancel();
+    if (!mounted || _screensaverVisible) return;
+
+    final settings = SettingsService.instance;
+    if (!settings.effectiveScreensaverEnabled) return;
+
+    _screensaverTimer = Timer(
+      Duration(seconds: settings.screensaverIdleSeconds),
+      _showScreensaverIfReady,
+    );
+  }
+
+  Future<void> _showScreensaverIfReady() async {
+    if (!mounted || _screensaverVisible) return;
+    if (!SettingsService.instance.effectiveScreensaverEnabled) return;
+
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) {
+      _resetScreensaverTimer();
+      return;
+    }
+
+    _screensaverVisible = true;
+    _screensaverTimer?.cancel();
+    try {
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const ScreensaverScreen()));
+    } finally {
+      _screensaverVisible = false;
+      if (mounted) _resetScreensaverTimer();
+    }
   }
 
   Future<void> _runAutoPlaybackTest(PlayerController ctrl) async {
@@ -377,225 +444,256 @@ class _ShellState extends State<_Shell> {
           if (didPop) return;
           setState(() => _tab = 0);
         },
-        child: Stack(
-          children: [
-            // 1. Background Layer (Stars + Nebula)
-            if (settings.effectiveShowSpaceBackground)
-              Positioned.fill(
-                child: RepaintBoundary(
-                  child: DeepSpaceBackground(
-                    subtle: _tab == 0,
-                    mode: DeepSpaceMode.background,
+        child: Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: _handleUserActivity,
+          onPointerMove: _handleUserActivity,
+          onPointerSignal: _handleUserActivity,
+          child: Stack(
+            children: [
+              // 1. Background Layer (Stars + Nebula)
+              if (settings.effectiveShowSpaceBackground)
+                Positioned.fill(
+                  child: RepaintBoundary(
+                    child: DeepSpaceBackground(
+                      subtle: _tab == 0,
+                      mode: DeepSpaceMode.background,
+                    ),
                   ),
                 ),
-              ),
 
-            // 2. Overlay Layer (Comets) - Behind Content
-            if (settings.effectiveShowSpaceBackground)
-              Positioned.fill(
-                child: RepaintBoundary(
-                  child: DeepSpaceBackground(
-                    subtle: _tab == 0,
-                    mode: DeepSpaceMode.overlay,
+              // 2. Overlay Layer (Comets) - Behind Content
+              if (settings.effectiveShowSpaceBackground)
+                Positioned.fill(
+                  child: RepaintBoundary(
+                    child: DeepSpaceBackground(
+                      subtle: _tab == 0,
+                      mode: DeepSpaceMode.overlay,
+                    ),
                   ),
                 ),
-              ),
 
-            // 3. Content (Scaffold)
-            Scaffold(
-              backgroundColor: Colors.transparent,
-              appBar:
-                  _tab == 0
-                      ? null
-                      : AppBar(
-                        title: const Text('Now Playing'),
-                        actions: [
-                          if (Platform.isAndroid)
-                            IconButton(
-                              tooltip: 'Equalizer',
-                              icon: const PhosphorIcon(
-                                PhosphorIconsBold.sliders,
-                              ),
-                              onPressed:
-                                  () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder:
-                                          (_) => EqualizerScreen(
-                                            sessionId:
-                                                ctrl
-                                                    .player
-                                                    .androidAudioSessionId ??
-                                                0,
-                                          ),
+              // 3. Content (Scaffold)
+              Scaffold(
+                backgroundColor: Colors.transparent,
+                resizeToAvoidBottomInset: false,
+                appBar:
+                    _tab == 0
+                        ? null
+                        : AppBar(
+                          title: const Text('Now Playing'),
+                          actions: [
+                            if (Platform.isAndroid)
+                              IconButton(
+                                tooltip: 'Equalizer',
+                                icon: const PhosphorIcon(
+                                  PhosphorIconsBold.sliders,
+                                ),
+                                onPressed:
+                                    () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder:
+                                            (_) => EqualizerScreen(
+                                              sessionId:
+                                                  ctrl
+                                                      .player
+                                                      .androidAudioSessionId ??
+                                                  0,
+                                            ),
+                                      ),
                                     ),
+                              ),
+                            IconButton(
+                              tooltip: 'Sleep Timer',
+                              icon: const PhosphorIcon(PhosphorIconsBold.timer),
+                              onPressed: () => _showSleepTimer(context, ctrl),
+                            ),
+                            IconButton(
+                              tooltip: 'Queue',
+                              icon: const PhosphorIcon(PhosphorIconsBold.queue),
+                              onPressed: () => _showQueue(context, ctrl),
+                            ),
+                            IconButton(
+                              tooltip: 'Chapters',
+                              icon: const PhosphorIcon(
+                                PhosphorIconsBold.bookmarksSimple,
+                              ),
+                              onPressed: () => _showBookmarks(context, ctrl),
+                            ),
+                          ],
+                        ),
+                body: IndexedStack(
+                  index: _tab,
+                  children: [
+                    const LibraryPage(),
+                    PlayerScreen(isVisible: _tab == 1),
+                  ],
+                ),
+                bottomNavigationBar: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      kSp * 1.5,
+                      0,
+                      kSp * 1.5,
+                      kSp,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 180),
+                          child:
+                              _tab == 0
+                                  ? MiniPlayer(
+                                    key: const ValueKey('mini-player'),
+                                    ctrl: ctrl,
+                                    onTap: () {
+                                      FocusScope.of(context).unfocus();
+                                      setState(() => _tab = 1);
+                                    },
+                                  )
+                                  : const SizedBox.shrink(
+                                    key: ValueKey('mini-player-empty'),
                                   ),
+                        ),
+                        GlassPanel(
+                          borderRadius: BorderRadius.circular(30),
+                          borderWidth: 1.5,
+                          borderColor: Colors.white.withValues(alpha: 0.15),
+                          backgroundColor: kColorGlassClear,
+                          child: SizedBox(
+                            height: 62,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                _NavBarItem(
+                                  icon: PhosphorIconsRegular.musicNotesSimple,
+                                  selectedIcon:
+                                      PhosphorIconsFill.musicNotesSimple,
+                                  label: 'Library',
+                                  selected: _tab == 0,
+                                  onTap: () {
+                                    FocusScope.of(context).unfocus();
+                                    setState(() => _tab = 0);
+                                  },
+                                ),
+                                _NavBarItem(
+                                  icon: PhosphorIconsRegular.vinylRecord,
+                                  selectedIcon: PhosphorIconsFill.vinylRecord,
+                                  label: 'Player',
+                                  selected: _tab == 1,
+                                  onTap: () {
+                                    FocusScope.of(context).unfocus();
+                                    setState(() => _tab = 1);
+                                  },
+                                ),
+                              ],
                             ),
-                          IconButton(
-                            tooltip: 'Sleep Timer',
-                            icon: const PhosphorIcon(PhosphorIconsBold.timer),
-                            onPressed: () => _showSleepTimer(context, ctrl),
                           ),
-                          IconButton(
-                            tooltip: 'Queue',
-                            icon: const PhosphorIcon(PhosphorIconsBold.queue),
-                            onPressed: () => _showQueue(context, ctrl),
-                          ),
-                          IconButton(
-                            tooltip: 'Chapters',
-                            icon: const PhosphorIcon(
-                              PhosphorIconsBold.bookmarksSimple,
-                            ),
-                            onPressed: () => _showBookmarks(context, ctrl),
-                          ),
-                        ],
-                      ),
-              body: IndexedStack(
-                index: _tab,
-                children: [
-                  const LibraryPage(),
-                  PlayerScreen(isVisible: _tab == 1),
-                ],
-              ),
-              bottomNavigationBar: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    kSp * 2,
-                    0,
-                    kSp * 2,
-                    kSp * 1.5,
-                  ),
-                  child: GlassPanel(
-                    borderRadius: BorderRadius.circular(32),
-                    borderWidth: 1.5,
-                    borderColor: Colors.white.withValues(alpha: 0.15),
-                    backgroundColor: kColorGlassClear,
-                    child: SizedBox(
-                      height: 64,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _NavBarItem(
-                            icon: PhosphorIconsRegular.musicNotesSimple,
-                            selectedIcon: PhosphorIconsFill.musicNotesSimple,
-                            label: 'Library',
-                            selected: _tab == 0,
-                            onTap: () {
-                              FocusScope.of(context).unfocus();
-                              setState(() => _tab = 0);
-                            },
-                          ),
-                          _NavBarItem(
-                            icon: PhosphorIconsRegular.vinylRecord,
-                            selectedIcon: PhosphorIconsFill.vinylRecord,
-                            label: 'Player',
-                            selected: _tab == 1,
-                            onTap: () {
-                              FocusScope.of(context).unfocus();
-                              setState(() => _tab = 1);
-                            },
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ),
-            ),
 
-            // 4. Global scan indicator (visible outside Library tab)
-            if (_tab != 0)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: SafeArea(
-                  bottom: false,
-                  child: AnimatedBuilder(
-                    animation: scan,
-                    builder: (context, _) {
-                      if (scan.phase == LibraryScanPhase.error &&
-                          scan.lastError != null) {
+              // 4. Global scan indicator (visible outside Library tab)
+              if (_tab != 0)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: SafeArea(
+                    bottom: false,
+                    child: AnimatedBuilder(
+                      animation: scan,
+                      builder: (context, _) {
+                        if (scan.phase == LibraryScanPhase.error &&
+                            scan.lastError != null) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: kSp * 2,
+                              vertical: kSp,
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: kSp,
+                                vertical: kSp * 0.75,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.35),
+                                borderRadius: BorderRadius.circular(kRadius),
+                                border: Border.all(
+                                  color: Colors.redAccent.withValues(
+                                    alpha: 0.35,
+                                  ),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.error_outline,
+                                    color: Colors.redAccent,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: kSp),
+                                  Expanded(
+                                    child: Text(
+                                      'Scan failed. ${scan.lastError}',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: _on2,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed:
+                                        scan.isScanning
+                                            ? null
+                                            : () {
+                                              // Avoid disrupting playback while user is on Player tab.
+                                              unawaited(
+                                                LibraryScanService.instance
+                                                    .scanLibrary(
+                                                      restorePlayerState: false,
+                                                    ),
+                                              );
+                                            },
+                                    child: const Text('Retry'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+
+                        if (!scan.isScanning) return const SizedBox.shrink();
                         return Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: kSp * 2,
                             vertical: kSp,
                           ),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: kSp,
-                              vertical: kSp * 0.75,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.35),
-                              borderRadius: BorderRadius.circular(kRadius),
-                              border: Border.all(
-                                color: Colors.redAccent.withValues(alpha: 0.35),
-                                width: 1,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.error_outline,
-                                  color: Colors.redAccent,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: kSp),
-                                Expanded(
-                                  child: Text(
-                                    'Scan failed. ${scan.lastError}',
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: _on2,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed:
-                                      scan.isScanning
-                                          ? null
-                                          : () {
-                                            // Avoid disrupting playback while user is on Player tab.
-                                            unawaited(
-                                              LibraryScanService.instance
-                                                  .scanLibrary(
-                                                    restorePlayerState: false,
-                                                  ),
-                                            );
-                                          },
-                                  child: const Text('Retry'),
-                                ),
-                              ],
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(999),
+                            child: LinearProgressIndicator(
+                              value: scan.progress == 0 ? null : scan.progress,
+                              backgroundColor: Colors.white10,
+                              color: Theme.of(context).colorScheme.primary,
+                              minHeight: 6,
                             ),
                           ),
                         );
-                      }
-
-                      if (!scan.isScanning) return const SizedBox.shrink();
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: kSp * 2,
-                          vertical: kSp,
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(999),
-                          child: LinearProgressIndicator(
-                            value: scan.progress == 0 ? null : scan.progress,
-                            backgroundColor: Colors.white10,
-                            color: Color(SettingsService.instance.accentColor),
-                            minHeight: 6,
-                          ),
-                        ),
-                      );
-                    },
+                      },
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -829,6 +927,7 @@ class _NavBarItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = SettingsService.instance;
+    final accent = _effectiveAccent(settings);
     return GestureDetector(
       onTap: () {
         onTap();
@@ -847,7 +946,7 @@ class _NavBarItem extends StatelessWidget {
               child: Icon(
                 selected ? selectedIcon : icon,
                 key: ValueKey(selected),
-                color: selected ? Color(settings.accentColor) : _on2,
+                color: selected ? accent : _on2,
                 size: 24,
               ),
             ),
@@ -855,7 +954,7 @@ class _NavBarItem extends StatelessWidget {
             AnimatedDefaultTextStyle(
               duration: const Duration(milliseconds: 200),
               style: TextStyle(
-                color: selected ? Color(settings.accentColor) : _on2,
+                color: selected ? accent : _on2,
                 fontSize: 10,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
               ),

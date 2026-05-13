@@ -59,6 +59,10 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
       'Performance:',
       '  appStartAt: ${perf.appStartAt?.toIso8601String() ?? '-'}',
       '  coldStartToFirstFrameMs: ${perf.coldStartToFirstFrame?.inMilliseconds ?? '-'}',
+      '  frameSummary: ${perf.frameSummary()}',
+      '  frames: ${perf.frameCount}',
+      '  jankyFrames: ${perf.jankyFrameCount}',
+      '  severeFrames: ${perf.severeFrameCount}',
       '  lastScanDurationMs: ${scan.lastScanDuration?.inMilliseconds ?? '-'}',
       '',
       'LibraryScan:',
@@ -141,19 +145,25 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
 
               const SizedBox(height: kSp * 2),
               _section('Performance'),
-              _card(
-                ListTile(
-                  title: const Text('Metrics'),
-                  subtitle: Text(
-                    'App start: ${perf.appStartAt?.toIso8601String() ?? '-'}\n'
-                    'Cold start to first frame: ${perf.coldStartToFirstFrame?.inMilliseconds ?? '-'} ms\n'
-                    'Last scan duration: ${scan.lastScanDuration?.inMilliseconds ?? '-'} ms',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white.withValues(alpha: 0.6),
+              AnimatedBuilder(
+                animation: perf,
+                builder:
+                    (context, _) => _card(
+                      ListTile(
+                        title: const Text('Metrics'),
+                        subtitle: Text(
+                          'App start: ${perf.appStartAt?.toIso8601String() ?? '-'}\n'
+                          'Cold start to first frame: ${perf.coldStartToFirstFrame?.inMilliseconds ?? '-'} ms\n'
+                          'Frames: ${perf.frameCount} (${perf.frameSummary()})\n'
+                          'Janky/severe: ${perf.jankyFrameCount}/${perf.severeFrameCount}\n'
+                          'Last scan duration: ${scan.lastScanDuration?.inMilliseconds ?? '-'} ms',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
               ),
 
               const SizedBox(height: kSp * 2),

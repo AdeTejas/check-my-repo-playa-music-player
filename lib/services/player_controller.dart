@@ -532,7 +532,7 @@ class PlayerController {
     _neuralMixEnergyMode = next;
     neuralMixEnergyModeNotifier.value = next;
     AnalyticsService.logEvent('neural_mix_mode', {'mode': next.name});
-    developer.log('Neural mix energy mode -> $next', name: 'player.controller');
+    developer.log('Sonic Flow energy mode -> $next', name: 'player.controller');
   }
 
   String _neuralMixEnergyModeArg() {
@@ -646,6 +646,7 @@ class PlayerController {
   final ValueNotifier<List<Map<String, dynamic>>> bookmarksNotifier =
       ValueNotifier(const []);
   String currentId = '';
+  String? _loadedBookmarkId;
 
   bool get hasQueue => player.sequenceState.sequence.isNotEmpty;
   bool get isReady => hasQueue;
@@ -658,6 +659,19 @@ class PlayerController {
     final src = seq.sequence[clamped];
     final tag = src.tag;
     return tag is MediaItem ? tag : null;
+  }
+
+  String? get activeBookmarkId {
+    final id = currentMediaItem?.id;
+    if (id != null && id.isNotEmpty) return id;
+    if (currentId.isNotEmpty) return currentId;
+    return null;
+  }
+
+  void _syncBookmarks() {
+    bookmarksNotifier.value = List<Map<String, dynamic>>.unmodifiable(
+      bookmarks,
+    );
   }
 
   void _prefetchNeighborArtwork() {
@@ -744,7 +758,7 @@ class PlayerController {
           }
         }
 
-        // If Neural Mix is active, try to extend the queue and continue.
+        // If Sonic Flow is active, try to extend the queue and continue.
         if (_neuralMixActive) {
           Future<void>(() async {
             await _maybeExtendNeuralMix(force: true);
@@ -756,7 +770,9 @@ class PlayerController {
     player.currentIndexStream.listen((_) async {
       final tag = currentMediaItem;
       if (tag == null) return;
-      currentId = tag.id;
+      final nextId = tag.id;
+      final bookmarkIdChanged = nextId != _loadedBookmarkId;
+      currentId = nextId;
 
       _prefetchNeighborArtwork();
 
@@ -766,7 +782,9 @@ class PlayerController {
         SongRepository.instance.updateLastPlayed(songId).catchError((_) {});
       }
 
-      await _loadBookmarks();
+      if (bookmarkIdChanged) {
+        await _loadBookmarks();
+      }
       _saveState();
 
       // Smart Volume (ReplayGain + limiter) per-track.
@@ -774,7 +792,7 @@ class PlayerController {
         await _updateSmartGainForCurrent();
       });
 
-      // Keep Neural Mix going by ensuring there's always more queued.
+      // Keep Sonic Flow going by ensuring there's always more queued.
       if (_neuralMixActive) {
         await _maybeExtendNeuralMix();
       }
@@ -1060,6 +1078,8 @@ class PlayerController {
       artUri = Uri.file(s.data);
     }
 
+    final meta = await SongRepository.instance.getMetadata(s.id.toString());
+
     return AudioSource.uri(
       uri,
       tag: MediaItem(
@@ -1072,22 +1092,37 @@ class PlayerController {
         extras: {
           'path': s.data,
           'songId': s.id,
+          if (meta?.bpm != null) 'bpm': meta!.bpm,
+          if (meta?.key != null) 'key': meta!.key,
+          if (meta?.bpmSource != null) 'bpmSource': meta!.bpmSource,
+          if (meta?.bpmConfidence != null) 'bpmConfidence': meta!.bpmConfidence,
           if (extraExtras != null) ...extraExtras,
         },
       ),
     );
   }
 
-  Future<void> _loadBookmarks() async {
-    if (currentId.isEmpty) return;
+  Future<void> _loadBookmarks({bool force = false}) async {
+    final id = activeBookmarkId;
+    if (id == null) {
+      bookmarks.clear();
+      _loadedBookmarkId = null;
+      _syncBookmarks();
+      return;
+    }
+    currentId = id;
+    if (!force && _loadedBookmarkId == id) return;
     final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getStringList('bookmarks_$currentId') ?? [];
+    final saved = prefs.getStringList('bookmarks_$id') ?? [];
     bookmarks.clear();
     for (final s in saved) {
       try {
         // Try parsing as JSON (new format)
         final map = jsonDecode(s) as Map<String, dynamic>;
-        bookmarks.add(map);
+        final pos = map['pos'];
+        if (pos is int) {
+          bookmarks.add({'pos': pos, 'note': (map['note'] as String?) ?? ''});
+        }
       } catch (_) {
         // Fallback: old format (just milliseconds string)
         final ms = int.tryParse(s);
@@ -1096,23 +1131,31 @@ class PlayerController {
         }
       }
     }
-    bookmarksNotifier.value = List<Map<String, dynamic>>.unmodifiable(bookmarks);
+    _loadedBookmarkId = id;
+    _syncBookmarks();
   }
 
   Future<void> _saveBookmarks() async {
-    if (currentId.isEmpty) return;
+    final id = activeBookmarkId;
+    if (id == null) return;
+    currentId = id;
+    _loadedBookmarkId = id;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
-      'bookmarks_$currentId',
+      'bookmarks_$id',
       bookmarks.map((b) => jsonEncode(b)).toList(),
     );
-    bookmarksNotifier.value = List<Map<String, dynamic>>.unmodifiable(bookmarks);
+    _syncBookmarks();
   }
 
-  Future<void> addBookmark({String note = ''}) async {
-    if (!isReady) return;
-    bookmarks.add({'pos': player.position.inMilliseconds, 'note': note});
+  Future<bool> addBookmark({String note = ''}) async {
+    if (!isReady || activeBookmarkId == null) return false;
+    if (_loadedBookmarkId != activeBookmarkId) {
+      await _loadBookmarks(force: true);
+    }
+    bookmarks.add({'pos': player.position.inMilliseconds, 'note': note.trim()});
     await _saveBookmarks();
+    return true;
   }
 
   Future<void> updateBookmarkNote(int index, String note) async {
@@ -1128,7 +1171,7 @@ class PlayerController {
   }
 
   Future<void> reloadBookmarks() async {
-    await _loadBookmarks();
+    await _loadBookmarks(force: true);
   }
 
   Future<void> play() async {
@@ -1169,7 +1212,7 @@ class PlayerController {
           );
           librarySongs = _dedupeSongsByData(librarySongs);
         } catch (e) {
-          debugPrint("Error fetching library for Smart Shuffle: $e");
+          debugPrint("Error fetching library for Sonic Flow: $e");
         }
       }
 
@@ -1177,7 +1220,7 @@ class PlayerController {
       final seedKey = seedMeta?.key;
       if (seedBpm == null && (seedKey == null || seedKey.trim().isEmpty)) {
         debugPrint(
-          "Neural Mix: No DNA found for seed song. Generating random mix.",
+          "Sonic Flow: No DNA found for seed song. Generating discovery mix.",
         );
       }
 
@@ -1231,7 +1274,7 @@ class PlayerController {
       }
 
       if (mix.isEmpty) {
-        debugPrint("Neural Mix: Library is empty. Cannot generate mix.");
+        debugPrint("Sonic Flow: Library is empty. Cannot generate mix.");
         _setNeuralMixActive(false);
         return;
       }
@@ -1249,12 +1292,14 @@ class PlayerController {
           artist: s.artist,
         );
         final extra =
-            why == null ? null : <String, Object?>{'neuralMixWhy': why};
+            why == null
+                ? null
+                : <String, Object?>{'sonicFlowWhy': why, 'neuralMixWhy': why};
         final source = await _buildSource(s, extraExtras: extra);
         if (source != null) mixSources.add(source);
       }
 
-      debugPrint("Neural Mix: Generated ${mixSources.length} tracks.");
+      debugPrint("Sonic Flow: Generated ${mixSources.length} tracks.");
 
       if (mixSources.isEmpty) {
         _setNeuralMixActive(false);
@@ -1271,7 +1316,7 @@ class PlayerController {
           final safeIndex = insertIndex.clamp(0, _sources.length);
           _sources.insertAll(safeIndex, mixSources);
         } catch (e) {
-          debugPrint("Neural Mix Error (insertAll): $e");
+          debugPrint("Sonic Flow Error (insertAll): $e");
         }
       } else {
         // Fallback: rebuild sources (may restart playback).
@@ -1299,13 +1344,13 @@ class PlayerController {
           );
           if (wasPlaying) await player.play();
         } catch (e) {
-          debugPrint("Neural Mix Error: $e");
+          debugPrint("Sonic Flow Error: $e");
         }
       }
 
       await player.setShuffleModeEnabled(false);
     } catch (e) {
-      debugPrint("Neural Mix Error: $e");
+      debugPrint("Sonic Flow Error: $e");
       _setNeuralMixActive(false);
     } finally {
       neuralMixBusy.value = false;
@@ -1353,7 +1398,7 @@ class PlayerController {
         await audioSource.insertAll(insertAt, newSources);
         _sources.addAll(newSources);
       } catch (e) {
-        debugPrint('Neural Mix Error (auto extend): $e');
+        debugPrint('Sonic Flow Error (auto extend): $e');
         return;
       }
 
@@ -1389,7 +1434,7 @@ class PlayerController {
         );
         librarySongs = _dedupeSongsByData(librarySongs);
       } catch (e) {
-        debugPrint('Error fetching library for Neural Mix: $e');
+        debugPrint('Error fetching library for Sonic Flow: $e');
       }
     }
 
@@ -1450,7 +1495,10 @@ class PlayerController {
         key: meta?.key,
         artist: s.artist,
       );
-      final extra = why == null ? null : <String, Object?>{'neuralMixWhy': why};
+      final extra =
+          why == null
+              ? null
+              : <String, Object?>{'sonicFlowWhy': why, 'neuralMixWhy': why};
       final source = await _buildSource(s, extraExtras: extra);
       if (source != null) mixSources.add(source);
     }
@@ -1475,6 +1523,26 @@ class PlayerController {
           debugPrint("Error removing from queue: $e");
         }
       }
+    }
+  }
+
+  Future<void> moveQueueItem(int oldIndex, int newIndex) async {
+    final audioSource = player.audioSource;
+    // ignore: deprecated_member_use
+    if (audioSource is! ConcatenatingAudioSource) return;
+    if (oldIndex < 0 || oldIndex >= audioSource.length) return;
+
+    final targetIndex = newIndex.clamp(0, audioSource.length - 1);
+    if (oldIndex == targetIndex) return;
+
+    try {
+      await audioSource.move(oldIndex, targetIndex);
+      if (oldIndex < _sources.length) {
+        final source = _sources.removeAt(oldIndex);
+        _sources.insert(targetIndex.clamp(0, _sources.length), source);
+      }
+    } catch (e) {
+      debugPrint("Error moving queue item: $e");
     }
   }
 

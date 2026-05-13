@@ -1,71 +1,86 @@
-# Play Store release checklist (Playa)
+# Play Store Release Checklist (Playa)
 
-This repo currently builds Android, but **Play Store upload requires**: a unique application id, a real release signing key, and compliance checks.
+This repo builds Android, but Play Store upload requires a permanent application id, a real release signing key, and compliance checks.
 
-## 1) Set version
-- Update `version:` in `pubspec.yaml` (format: `x.y.z+code`).
-- Every upload must increment the `+code` value.
+## 1. Set Version
 
-## 2) Set a real Application ID (required)
-Current Android id is now `com.paxpiece.playa`.
+- Update `version:` in `pubspec.yaml` using the `x.y.z+code` format.
+- Every Play upload must increment the `+code` value.
 
-You must pick a permanent id (e.g. `com.yourcompany.playa`) and update:
-- `android/app/build.gradle.kts` → `defaultConfig.applicationId`
-- Kotlin package paths:
-  - `android/app/src/main/kotlin/.../MainActivity.kt` package declaration
-  - any other `package com.paxpiece.playa` files
-- Any hardcoded channel strings (e.g. MethodChannel names) that include the old id.
+## 2. Confirm Application ID
 
-## 3) Configure release signing (required)
-This repo supports a standard `android/key.properties` file.
+Current Android id: `com.paxpiece.playa`
 
-## 3) Configure release signing (required)
-This repo supports a standard `android/key.properties` file.
+If this is not the final permanent id, update:
 
-- Copy `android/key.properties.example` → `android/key.properties`
-- Fill in your upload keystore values
-- Do **not** commit the real `android/key.properties`
+- `android/app/build.gradle.kts` -> `defaultConfig.applicationId`
+- Kotlin package paths and package declarations under `android/app/src/main/kotlin`
+- Hardcoded MethodChannel names that include the old id
 
-### a) Generating an upload keystore
-Use the JDK `keytool` to create a durable upload key. For example:
+## 3. Configure Release Signing
+
+This repo uses `android/key.properties` for release signing.
+
+- Copy `android/key.properties.example` -> `android/key.properties`
+- Fill in your Play upload keystore values
+- Do not commit the real `android/key.properties`
+- Release builds intentionally fail if `android/key.properties` is missing, so a debug-signed bundle cannot be uploaded by mistake
+
+Generate a durable upload keystore with the JDK `keytool`:
 
 ```powershell
 keytool -genkeypair -v -keystore ~/playa_upload_keystore.jks -alias upload -keyalg RSA -keysize 2048 -validity 9125
 ```
 
-- Keep the keystore somewhere secure (e.g., a company vault).
-- Update `android/key.properties` to point at that keystore and its passwords.
-- Always use the same keystore for future Play Console uploads.
+Keep the keystore and passwords in a secure place. You need the same upload key for future releases unless Google resets it through Play App Signing.
 
-## 4) Validate permissions and Data Safety
-- `READ_MEDIA_AUDIO` is used for library access.
-- Ensure Play Console **Data safety** matches what the app does (local library access, network lyrics, etc.).
-- Keep the privacy policy up to date in `PRIVACY_POLICY.md` and reference it in Play Console metadata (make sure it mentions the new `com.paxpiece.playa` identifier).
+For GitHub Actions release bundles, add these repository secrets:
 
-## 4b) Keep metadata synced
+- `PLAYA_UPLOAD_KEYSTORE_BASE64`: base64-encoded contents of the `.jks` upload keystore
+- `PLAYA_UPLOAD_STORE_PASSWORD`
+- `PLAYA_UPLOAD_KEY_ALIAS`
+- `PLAYA_UPLOAD_KEY_PASSWORD`
 
-## 6) Upload and test
-- Upload the AAB to Play Console **Internal testing** first.
-- Smoke-test on Android 11–15 devices: library scan, playback, background notification, headset controls, external “open with”, etc.
+## 4. Validate Permissions And Data Safety
 
-## 7) CI verification
-- This repo now auto-runs formatting, tests, and the release bundle via `.github/workflows/ci.yml`.
-- Run the same checks locally before pushing:
-  ```powershell
-  dart format --set-exit-if-changed .
-  flutter test
-  flutter build appbundle --release
-  ```
-- You can also trigger the workflow manually with `gh workflow run ci.yml` (requires `gh` CLI and GitHub login).
-flutter clean
-flutter pub get
+- `READ_MEDIA_AUDIO` is used for local library access.
+- `POST_NOTIFICATIONS` and foreground service permissions support background playback controls.
+- `INTERNET` is used for optional lyrics lookup through LRCLIB (`lrclib.net`).
+- Play Console Data safety should match local media access, local playlists/ratings/bookmarks/settings, and online lyrics lookup.
+- Keep `PRIVACY_POLICY.md` aligned with the app behavior and reference it from Play Console metadata.
+
+## 5. Keep Metadata Synced
+
+- App name: `Playa`
+- Package id: `com.paxpiece.playa`
+- Version: keep `pubspec.yaml` synchronized with Play Console release notes.
+
+## 6. Verify Locally
+
+Run the same checks as CI before uploading:
+
+```powershell
+dart format --output=none --set-exit-if-changed lib test
+flutter analyze
 flutter test
 flutter build appbundle --release
 ```
 
-The output bundle:
+The upload bundle is:
+
 - `build/app/outputs/bundle/release/app-release.aab`
 
-## 6) Upload and test
-- Upload the AAB to Play Console **Internal testing** first.
-- Smoke-test on Android 11–15 devices: library scan, playback, background notification, headset controls, external “open with”, etc.
+## 7. Upload And Test
+
+Upload the AAB to Play Console Internal testing first.
+
+Smoke-test on Android 11-15 devices:
+
+- Library permission and scan
+- Playback, queue, seek, shuffle, repeat
+- Background notification controls
+- Headset/media button controls
+- Home-screen widget
+- External file "open with"
+- Lyrics lookup
+- Equalizer behavior on devices that support Android equalizer APIs

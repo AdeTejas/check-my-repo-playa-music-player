@@ -104,11 +104,7 @@ class LoadingState extends StatelessWidget {
   final String? message;
   final double? progress;
 
-  const LoadingState({
-    super.key,
-    this.message,
-    this.progress,
-  });
+  const LoadingState({super.key, this.message, this.progress});
 
   @override
   Widget build(BuildContext context) {
@@ -178,21 +174,13 @@ class _SuccessStateState extends State<SuccessState>
       duration: const Duration(milliseconds: 300),
     );
 
-    _scaleAnimation = Tween<double>(
-      begin: 0.8,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.elasticOut,
-    ));
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
+    );
 
-    _opacityAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeIn,
-    ));
+    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
+    );
 
     _animationController.forward();
 
@@ -238,11 +226,7 @@ class _SuccessStateState extends State<SuccessState>
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    PhosphorIconsBold.check,
-                    size: 16,
-                    color: Colors.white,
-                  ),
+                  Icon(PhosphorIconsBold.check, size: 16, color: Colors.white),
                   const SizedBox(width: kSp / 2),
                   Text(
                     widget.message,

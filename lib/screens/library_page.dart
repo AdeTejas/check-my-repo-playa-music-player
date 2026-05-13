@@ -32,6 +32,7 @@ class _LibraryPageState extends State<LibraryPage> {
   final _query = oaq.OnAudioQuery();
   List<oaq.SongModel> _allSongs = [];
   List<oaq.SongModel> _songs = [];
+  final Map<int, String> _searchIndex = {};
   bool _loading = true;
   bool _showFavoritesOnly = false;
   final _searchCtrl = TextEditingController();
@@ -68,6 +69,7 @@ class _LibraryPageState extends State<LibraryPage> {
               final key = Platform.isWindows ? s.data.toLowerCase() : s.data;
               return seen.add(key);
             }).toList();
+        _rebuildSearchIndex();
         _songs = _computeFiltered(_searchCtrl.text);
         _loading = false;
       });
@@ -84,9 +86,7 @@ class _LibraryPageState extends State<LibraryPage> {
   }
 
   Future<void> _bootstrap() async {
-    debugPrint('DEBUG: _bootstrap started');
     final granted = await _requestPermissions();
-    debugPrint('DEBUG: Permissions granted: $granted');
     if (!mounted) return;
     if (granted) {
       try {
@@ -94,52 +94,36 @@ class _LibraryPageState extends State<LibraryPage> {
         bool oaqStatus = true;
         if (Platform.isAndroid) {
           oaqStatus = await _query.permissionsStatus();
-          debugPrint('DEBUG: on_audio_query status: $oaqStatus');
-
           if (!oaqStatus) {
-            debugPrint(
-              'DEBUG: on_audio_query needs permission update. Calling permissionsRequest()...',
-            );
             try {
               // Call permissionsRequest to update internal state, but with timeout
               oaqStatus = await _query.permissionsRequest().timeout(
                 const Duration(seconds: 2),
               );
-              debugPrint('DEBUG: permissionsRequest result: $oaqStatus');
             } catch (e) {
-              debugPrint('DEBUG: permissionsRequest failed/timed out: $e');
+              debugPrint('Audio permission request failed: $e');
             }
           }
         }
 
-        debugPrint('DEBUG: Starting _loadSongs');
         await _loadSongs();
-        debugPrint('DEBUG: _loadSongs completed');
       } catch (e) {
-        debugPrint('DEBUG: _loadSongs failed: $e');
+        debugPrint('Song load failed: $e');
         if (mounted) {
           setState(() => _loading = false);
           showToast(context, 'Failed to load songs: $e');
         }
       }
     } else {
-      debugPrint('DEBUG: Permissions denied, skipping song load');
       setState(() => _loading = false);
     }
   }
 
   Future<bool> _requestPermissions() async {
-    debugPrint('DEBUG: Requesting permissions...');
     if (Platform.isAndroid) {
       // Try audio permission first (Android 13+)
-      Map<Permission, PermissionStatus> statuses =
-          await [
-            Permission.audio,
-            Permission.photos,
-            Permission.videos,
-          ].request();
-
-      if (statuses[Permission.audio] == PermissionStatus.granted) {
+      final audioStatus = await Permission.audio.request();
+      if (audioStatus.isGranted) {
         return true;
       }
 
@@ -180,6 +164,7 @@ class _LibraryPageState extends State<LibraryPage> {
       if (!mounted) return;
       setState(() {
         _allSongs = songs.where((s) => (s.data).isNotEmpty).toList();
+        _rebuildSearchIndex();
         _songs = _computeFiltered(_searchCtrl.text);
         _loading = false;
       });
@@ -207,19 +192,44 @@ class _LibraryPageState extends State<LibraryPage> {
       final q = query.toLowerCase();
       filtered =
           filtered.where((s) {
-            return s.title.toLowerCase().contains(q) ||
-                (s.artist?.toLowerCase().contains(q) ?? false) ||
-                (s.album?.toLowerCase().contains(q) ?? false);
+            return (_searchIndex[s.id] ?? _searchTextFor(s)).contains(q);
           }).toList();
     }
 
     return filtered;
   }
 
+  void _rebuildSearchIndex() {
+    _searchIndex
+      ..clear()
+      ..addEntries(_allSongs.map((s) => MapEntry(s.id, _searchTextFor(s))));
+  }
+
+  String _searchTextFor(oaq.SongModel s) {
+    return '${s.title} ${s.artist ?? ''} ${s.album ?? ''} ${s.displayName}'
+        .toLowerCase();
+  }
+
   void _filterSongs(String query) {
     setState(() {
       _songs = _computeFiltered(query);
     });
+  }
+
+  int get _favoriteCount {
+    final favs = PlayerController.ensure().favoritesNotifier.value;
+    return _allSongs.where((s) => favs.contains(s.id.toString())).length;
+  }
+
+  String get _librarySummary {
+    final total = _allSongs.length;
+    if (_showFavoritesOnly) {
+      return '$_favoriteCount favorite${_favoriteCount == 1 ? '' : 's'}';
+    }
+    if (_searchCtrl.text.trim().isNotEmpty) {
+      return '${_songs.length} match${_songs.length == 1 ? '' : 'es'} of $total';
+    }
+    return '$total track${total == 1 ? '' : 's'}';
   }
 
   Future<void> _playNow(oaq.SongModel s) async {
@@ -500,96 +510,42 @@ class _LibraryPageState extends State<LibraryPage> {
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(kSp * 2, kSp, kSp * 2, 0),
-                child: SizedBox(
-                  height: 44,
-                  child: NavigationToolbar(
-                    centerMiddle: true,
-                    middleSpacing: 0,
-                    leading: const SizedBox.shrink(),
-                    middle: const Text(
-                      'Library',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Favorites Toggle
-                        ValueListenableBuilder<List<String>>(
-                          valueListenable:
-                              PlayerController.ensure().favoritesNotifier,
-                          builder: (context, favs, _) {
-                            return IconButton(
-                              tooltip:
-                                  _showFavoritesOnly
-                                      ? 'Show All'
-                                      : 'Show Favorites',
-                              icon: Icon(
-                                _showFavoritesOnly
-                                    ? PhosphorIconsFill.heart
-                                    : PhosphorIconsRegular.heart,
-                                color:
-                                    _showFavoritesOnly
-                                        ? Colors.redAccent
-                                        : kColorOn,
-                              ),
-                              onPressed:
-                                  scan.isScanning
-                                      ? null
-                                      : () {
-                                        setState(() {
-                                          _showFavoritesOnly =
-                                              !_showFavoritesOnly;
-                                          _songs = _computeFiltered(
-                                            _searchCtrl.text,
-                                          );
-                                        });
-                                      },
-                            );
-                          },
-                        ),
-                        IconButton(
-                          tooltip: 'Playlists',
-                          icon: const Icon(PhosphorIconsBold.playlist),
-                          onPressed:
-                              scan.isScanning
-                                  ? null
-                                  : () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => const PlaylistsScreen(),
-                                    ),
-                                  ),
-                        ),
-                        IconButton(
-                          tooltip: 'Sort',
-                          icon: const Icon(
-                            PhosphorIconsRegular.slidersHorizontal,
+                padding: const EdgeInsets.fromLTRB(kSp, kSp * 0.5, kSp, 0),
+                child: ValueListenableBuilder<List<String>>(
+                  valueListenable: PlayerController.ensure().favoritesNotifier,
+                  builder: (context, favs, _) {
+                    return _LibraryHeader(
+                      summary: _librarySummary,
+                      favoritesOnly: _showFavoritesOnly,
+                      scanning: scan.isScanning,
+                      onFavoritesTap: () {
+                        setState(() {
+                          _showFavoritesOnly = !_showFavoritesOnly;
+                          _songs = _computeFiltered(_searchCtrl.text);
+                        });
+                      },
+                      onPlaylistsTap:
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const PlaylistsScreen(),
+                            ),
                           ),
-                          onPressed: scan.isScanning ? null : _showSortMenu,
-                        ),
-                        IconButton(
-                          tooltip: 'Settings',
-                          icon: const Icon(PhosphorIconsBold.gear),
-                          onPressed:
-                              () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const SettingsScreen(),
-                                ),
-                              ),
-                        ),
-                      ],
-                    ),
-                  ),
+                      onSortTap: _showSortMenu,
+                      onSettingsTap:
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const SettingsScreen(),
+                            ),
+                          ),
+                    );
+                  },
                 ),
               ),
               if (scan.isScanning)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(kSp * 2, kSp, kSp * 2, 0),
+                  padding: const EdgeInsets.fromLTRB(kSp, 6, kSp, 0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -630,7 +586,7 @@ class _LibraryPageState extends State<LibraryPage> {
               if (scan.phase == LibraryScanPhase.error &&
                   scan.lastError != null)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(kSp * 2, kSp, kSp * 2, 0),
+                  padding: const EdgeInsets.fromLTRB(kSp, 6, kSp, 0),
                   child: GlassPanel(
                     useShader: false,
                     borderRadius: BorderRadius.circular(kRadius),
@@ -667,14 +623,14 @@ class _LibraryPageState extends State<LibraryPage> {
               // Main Glass Surface (Search + List)
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(kSp * 2, 0, kSp * 2, 0),
+                  padding: const EdgeInsets.fromLTRB(kSp, 6, kSp, 0),
                   child: GlassPanel(
                     useShader: false,
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(16),
                     borderColor: Colors.white.withValues(alpha: 0.15),
-                    backgroundColor: const Color(0x04FFFFFF),
+                    backgroundColor: kColorGlassBlackTint,
                     boxShadow: const [],
-                    padding: const EdgeInsets.all(kSp),
+                    padding: const EdgeInsets.all(8),
                     child: Column(
                       children: [
                         // Search Bar (match Now Playing chip-glass)
@@ -690,7 +646,7 @@ class _LibraryPageState extends State<LibraryPage> {
                             onChanged: _filterSongs,
                             style: const TextStyle(color: kColorOn),
                             decoration: const InputDecoration(
-                              hintText: 'Search songs, artists…',
+                              hintText: 'Search library',
                               hintStyle: TextStyle(color: kColorOn2),
                               prefixIcon: Icon(
                                 PhosphorIconsRegular.magnifyingGlass,
@@ -707,14 +663,39 @@ class _LibraryPageState extends State<LibraryPage> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 6),
+
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(4, 0, 4, 5),
+                          child: Row(
+                            children: [
+                              Text(
+                                _showFavoritesOnly ? 'Favorites' : 'All Tracks',
+                                style: const TextStyle(
+                                  color: kColorOn,
+                                  fontSize: kTextSm,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                _librarySummary,
+                                style: const TextStyle(
+                                  color: kColorOn2,
+                                  fontSize: kTextXs,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
 
                         // Hairline divider under search
                         Container(
                           height: 1,
                           color: Colors.white.withValues(alpha: 0.08),
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 4),
 
                         Expanded(
                           child:
@@ -771,7 +752,7 @@ class _LibraryPageState extends State<LibraryPage> {
                                   )
                                   : ListView.separated(
                                     padding: const EdgeInsets.only(
-                                      bottom: kNavHeight + kSp,
+                                      bottom: kNavHeight + 76,
                                     ),
                                     itemCount: _songs.length,
                                     separatorBuilder: (context, index) {
@@ -799,7 +780,7 @@ class _LibraryPageState extends State<LibraryPage> {
                                           child: Padding(
                                             padding: const EdgeInsets.symmetric(
                                               horizontal: 4,
-                                              vertical: 6,
+                                              vertical: 4,
                                             ),
                                             child: Row(
                                               children: [
@@ -832,8 +813,8 @@ class _LibraryPageState extends State<LibraryPage> {
                                                   borderRadius:
                                                       BorderRadius.circular(8),
                                                   child: SizedBox(
-                                                    width: 44,
-                                                    height: 44,
+                                                    width: 38,
+                                                    height: 38,
                                                     child: DecoratedBox(
                                                       decoration:
                                                           const BoxDecoration(
@@ -862,7 +843,7 @@ class _LibraryPageState extends State<LibraryPage> {
                                                     ),
                                                   ),
                                                 ),
-                                                const SizedBox(width: 10),
+                                                const SizedBox(width: 8),
 
                                                 Expanded(
                                                   child: Column(
@@ -1012,6 +993,127 @@ class _LibraryPageState extends State<LibraryPage> {
           ),
         );
       },
+    );
+  }
+}
+
+class _LibraryHeader extends StatelessWidget {
+  final String summary;
+  final bool favoritesOnly;
+  final bool scanning;
+  final VoidCallback onFavoritesTap;
+  final VoidCallback onPlaylistsTap;
+  final VoidCallback onSortTap;
+  final VoidCallback onSettingsTap;
+
+  const _LibraryHeader({
+    required this.summary,
+    required this.favoritesOnly,
+    required this.scanning,
+    required this.onFavoritesTap,
+    required this.onPlaylistsTap,
+    required this.onSortTap,
+    required this.onSettingsTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+
+    return GlassPanel(
+      useShader: false,
+      borderRadius: BorderRadius.circular(16),
+      borderColor: Colors.white.withValues(alpha: 0.14),
+      backgroundColor: kColorGlassBlackTint,
+      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 28,
+            decoration: BoxDecoration(
+              color: accent,
+              borderRadius: BorderRadius.circular(99),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              summary,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: kColorOn,
+                fontSize: kTextMd,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          _HeaderAction(
+            tooltip: favoritesOnly ? 'Show all' : 'Show favorites',
+            icon:
+                favoritesOnly
+                    ? PhosphorIconsFill.heart
+                    : PhosphorIconsRegular.heart,
+            active: favoritesOnly,
+            onTap: scanning ? null : onFavoritesTap,
+          ),
+          _HeaderAction(
+            tooltip: 'Playlists',
+            icon: PhosphorIconsBold.playlist,
+            onTap: scanning ? null : onPlaylistsTap,
+          ),
+          _HeaderAction(
+            tooltip: 'Sort',
+            icon: PhosphorIconsRegular.slidersHorizontal,
+            onTap: scanning ? null : onSortTap,
+          ),
+          _HeaderAction(
+            tooltip: 'Settings',
+            icon: PhosphorIconsBold.gear,
+            onTap: onSettingsTap,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeaderAction extends StatelessWidget {
+  final String tooltip;
+  final IconData icon;
+  final bool active;
+  final VoidCallback? onTap;
+
+  const _HeaderAction({
+    required this.tooltip,
+    required this.icon,
+    required this.onTap,
+    this.active = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return Tooltip(
+      message: tooltip,
+      child: IconButton(
+        onPressed: onTap,
+        icon: Icon(icon),
+        color: active ? accent : kColorOn,
+        style: IconButton.styleFrom(
+          fixedSize: const Size(34, 34),
+          backgroundColor:
+              active
+                  ? accent.withValues(alpha: 0.14)
+                  : Colors.white.withValues(alpha: 0.045),
+          disabledBackgroundColor: Colors.white.withValues(alpha: 0.025),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+          ),
+        ),
+      ),
     );
   }
 }

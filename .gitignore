@@ -1,6 +1,7 @@
 # Miscellaneous
 *.class
 *.log
+*.logcat
 *.pyc
 *.swp
 .DS_Store
@@ -11,6 +12,8 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+analysis_output*.txt
+logcat_*.txt
 
 # IntelliJ related
 *.iml

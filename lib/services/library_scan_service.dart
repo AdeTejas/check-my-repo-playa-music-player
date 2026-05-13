@@ -9,6 +9,8 @@ import '../services/android_audio_query.dart';
 import '../services/windows_audio_query.dart';
 import '../services/settings_service.dart';
 import '../services/player_controller.dart';
+import '../services/artwork_cache_service.dart';
+import '../services/waveform_cache_service.dart';
 
 enum LibraryScanPhase {
   idle,
@@ -204,6 +206,7 @@ class LibraryScanService extends ChangeNotifier {
           await ctrl.restoreState(dedupedSongs);
         }
       }
+      unawaited(_warmLibraryCaches(dedupedSongs));
 
       _setPhase(LibraryScanPhase.done, progress: 1.0);
       _windowsCancelToken = null;
@@ -237,5 +240,23 @@ class LibraryScanService extends ChangeNotifier {
     return order == 1
         ? oaq.OrderType.DESC_OR_GREATER
         : oaq.OrderType.ASC_OR_SMALLER;
+  }
+
+  Future<void> _warmLibraryCaches(List<oaq.SongModel> songs) async {
+    if (songs.isEmpty) return;
+    final visibleSet = songs.take(80).toList(growable: false);
+    for (final song in visibleSet) {
+      await Future<void>.delayed(const Duration(milliseconds: 8));
+      unawaited(WaveformCacheService.instance.getWaveform(song.data));
+      if (!Platform.isWindows && !Platform.isLinux) {
+        unawaited(
+          ArtworkCacheService.instance.prefetchArtwork(
+            id: song.id,
+            type: oaq.ArtworkType.AUDIO,
+            size: 300,
+          ),
+        );
+      }
+    }
   }
 }

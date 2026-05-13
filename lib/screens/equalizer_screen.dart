@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:playa_clean/ui/tokens.dart';
 import '../ui/glass_panel.dart';
 import '../services/equalizer_service.dart';
+import '../services/player_controller.dart';
 
 class EqualizerScreen extends StatefulWidget {
   final int sessionId;
@@ -30,7 +31,8 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
   }
 
   Future<void> _initializeEqualizer() async {
-    if (widget.sessionId == 0) {
+    final sessionId = await _resolveSessionId();
+    if (sessionId == 0) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -42,7 +44,7 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
     }
 
     try {
-      await EqualizerService.initializeEqualizer(widget.sessionId);
+      await EqualizerService.initializeEqualizer(sessionId);
       _bandCenters = await EqualizerService.getBandCenterFrequencies();
       _bandLevels = await EqualizerService.getAllBandLevels();
       _bands =
@@ -56,6 +58,10 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
       _presetNames = await EqualizerService.getPresetNames();
       _currentPreset = await EqualizerService.getCurrentPreset();
       _isEnabled = await EqualizerService.isEnabled();
+      if (!_isEnabled) {
+        await EqualizerService.setEnabled(true);
+        _isEnabled = true;
+      }
 
       setState(() => _isInitialized = true);
     } catch (e) {
@@ -68,8 +74,25 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
     }
   }
 
+  Future<int> _resolveSessionId() async {
+    var sessionId = widget.sessionId;
+    if (sessionId != 0) return sessionId;
+
+    final player = PlayerController.ensure().player;
+    for (int i = 0; i < 12; i++) {
+      sessionId = player.androidAudioSessionId ?? 0;
+      if (sessionId != 0) return sessionId;
+      await Future.delayed(const Duration(milliseconds: 180));
+    }
+    return 0;
+  }
+
   Future<void> _setBandLevel(int band, int level) async {
     try {
+      if (!_isEnabled) {
+        await EqualizerService.setEnabled(true);
+        _isEnabled = true;
+      }
       await EqualizerService.setBandLevel(band, level);
       setState(() {
         _bandLevels[band] = level;
@@ -97,7 +120,28 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
 
   String _formatDb(int milliBels) {
     final db = milliBels / 100.0;
-    return db.toStringAsFixed(1);
+    final prefix = db > 0 ? '+' : '';
+    return '$prefix${db.toStringAsFixed(1)}';
+  }
+
+  String _formatHz(int hz) {
+    if (hz >= 1000) {
+      final v = hz / 1000.0;
+      return v >= 10
+          ? '${v.toStringAsFixed(0)}kHz'
+          : '${v.toStringAsFixed(1)}kHz';
+    }
+    return '${hz}Hz';
+  }
+
+  String get _selectedBandLabel {
+    final band = _lastTouchedBand;
+    if (band == null || band < 0 || band >= _bandLevels.length) {
+      return 'Drag the curve to tune bands';
+    }
+    final hz = band < _bandCenters.length ? _bandCenters[band] : 0;
+    final freq = hz > 0 ? _formatHz(hz) : 'Band ${band + 1}';
+    return '$freq  ${_formatDb(_bandLevels[band])} dB';
   }
 
   Future<void> _usePreset(int preset) async {
@@ -140,149 +184,197 @@ class _EqualizerScreenState extends State<EqualizerScreen> {
       appBar: AppBar(
         title: const Text('Equalizer'),
         backgroundColor: Colors.transparent,
-        actions: [
-          IconButton(
-            tooltip: 'Reset (Flat)',
-            onPressed: _isInitialized && _isEnabled ? _resetFlat : null,
-            icon: const Icon(Icons.refresh),
-          ),
-          Switch(
-            value: _isEnabled,
-            onChanged: _isInitialized ? (_) => _toggleEnabled() : null,
-            activeThumbColor: accentColor,
-          ),
-        ],
       ),
       body:
           !_isInitialized
               ? const Center(child: CircularProgressIndicator())
-              : Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      kSp * 2,
-                      kSp,
-                      kSp * 2,
-                      0,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Preset: $presetLabel',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: kColorOn2,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
+              : SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    kSp * 1.5,
+                    0,
+                    kSp * 1.5,
+                    kSp,
+                  ),
+                  child: Column(
+                    children: [
+                      GlassPanel(
+                        borderRadius: BorderRadius.circular(14),
+                        borderColor: Colors.white.withValues(alpha: 0.10),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 9,
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color:
+                                      _isEnabled ? accentColor : Colors.white24,
+                                  boxShadow:
+                                      _isEnabled
+                                          ? [
+                                            BoxShadow(
+                                              color: accentColor.withValues(
+                                                alpha: 0.35,
+                                              ),
+                                              blurRadius: 10,
+                                            ),
+                                          ]
+                                          : null,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      _isEnabled ? 'Live EQ' : 'EQ bypassed',
+                                      style: const TextStyle(
+                                        color: kColorOn,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '$presetLabel${rangeText.isNotEmpty ? '  |  $rangeText' : ''}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: kColorOn2,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Reset flat',
+                                visualDensity: VisualDensity.compact,
+                                iconSize: 18,
+                                onPressed:
+                                    _isInitialized && _isEnabled
+                                        ? _resetFlat
+                                        : null,
+                                icon: const Icon(Icons.refresh),
+                              ),
+                              Switch(
+                                value: _isEnabled,
+                                onChanged:
+                                    _isInitialized
+                                        ? (_) => _toggleEnabled()
+                                        : null,
+                                activeThumbColor: accentColor,
+                                activeTrackColor: accentColor.withValues(
+                                  alpha: 0.28,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Expanded(
+                        child: GlassPanel(
+                          borderRadius: BorderRadius.circular(18),
+                          borderColor: Colors.white.withValues(alpha: 0.09),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(18),
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                return GestureDetector(
+                                  onPanUpdate:
+                                      _isEnabled
+                                          ? (details) =>
+                                              _handleTouch(details, constraints)
+                                          : null,
+                                  onTapDown:
+                                      _isEnabled
+                                          ? (details) =>
+                                              _handleTouch(details, constraints)
+                                          : null,
+                                  child: CustomPaint(
+                                    size: Size(
+                                      constraints.maxWidth,
+                                      constraints.maxHeight,
+                                    ),
+                                    painter: _EQCurvePainter(
+                                      bands: _bands,
+                                      levels: _bandLevels,
+                                      centersHz: _bandCenters,
+                                      range: _levelRange,
+                                      color: accentColor,
+                                      selectedBand: _lastTouchedBand,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         ),
-                        if (rangeText.isNotEmpty)
-                          Text(
-                            rangeText,
-                            style: const TextStyle(
-                              color: kColorOn2,
-                              fontSize: 12,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  // Interactive Curve Visualizer
-                  Expanded(
-                    flex: 3,
-                    child: Padding(
-                      padding: const EdgeInsets.all(kSp),
-                      child: GlassPanel(
-                        borderRadius: BorderRadius.circular(16),
-                        borderColor: Colors.white10,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              return GestureDetector(
-                                onPanUpdate:
-                                    _isEnabled
-                                        ? (details) =>
-                                            _handleTouch(details, constraints)
-                                        : null,
-                                onTapDown:
-                                    _isEnabled
-                                        ? (details) =>
-                                            _handleTouch(details, constraints)
-                                        : null,
-                                child: CustomPaint(
-                                  size: Size(
-                                    constraints.maxWidth,
-                                    constraints.maxHeight,
-                                  ),
-                                  painter: _EQCurvePainter(
-                                    bands: _bands,
-                                    levels: _bandLevels,
-                                    centersHz: _bandCenters,
-                                    range: _levelRange,
-                                    color: accentColor,
-                                    selectedBand: _lastTouchedBand,
-                                  ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _selectedBandLabel,
+                        style: const TextStyle(
+                          color: kColorOn2,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (_presetNames.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 34,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _presetNames.length,
+                            separatorBuilder:
+                                (_, __) => const SizedBox(width: 7),
+                            itemBuilder: (context, i) {
+                              final isSelected = _currentPreset == i;
+                              return ChoiceChip(
+                                visualDensity: VisualDensity.compact,
+                                label: Text(_presetNames[i]),
+                                selected: isSelected,
+                                onSelected: (v) => v ? _usePreset(i) : null,
+                                selectedColor: accentColor.withValues(
+                                  alpha: 0.20,
+                                ),
+                                backgroundColor: Colors.white.withValues(
+                                  alpha: 0.045,
+                                ),
+                                side: BorderSide(
+                                  color:
+                                      isSelected
+                                          ? accentColor.withValues(alpha: 0.75)
+                                          : Colors.white12,
+                                ),
+                                labelStyle: TextStyle(
+                                  color: isSelected ? kColorOn : kColorOn2,
+                                  fontSize: 12,
+                                  fontWeight:
+                                      isSelected
+                                          ? FontWeight.w700
+                                          : FontWeight.w600,
                                 ),
                               );
                             },
                           ),
                         ),
-                      ),
-                    ),
+                      ],
+                    ],
                   ),
-
-                  // Presets & Info
-                  Expanded(
-                    flex: 2,
-                    child: Padding(
-                      padding: const EdgeInsets.all(kSp),
-                      child: Column(
-                        children: [
-                          if (_presetNames.isNotEmpty)
-                            SizedBox(
-                              height: 40,
-                              child: ListView.builder(
-                                scrollDirection: Axis.horizontal,
-                                itemCount: _presetNames.length,
-                                itemBuilder: (context, i) {
-                                  final isSelected = _currentPreset == i;
-                                  return Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: ChoiceChip(
-                                      label: Text(_presetNames[i]),
-                                      selected: isSelected,
-                                      onSelected:
-                                          (v) => v ? _usePreset(i) : null,
-                                      selectedColor: accentColor,
-                                      backgroundColor: kColorCard,
-                                      labelStyle: TextStyle(
-                                        color:
-                                            isSelected ? kColorOn : kColorOn2,
-                                        fontWeight:
-                                            isSelected
-                                                ? FontWeight.bold
-                                                : FontWeight.normal,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          const Spacer(),
-                          const Text(
-                            'Drag the curve to adjust frequencies',
-                            style: TextStyle(color: kColorOn2, fontSize: 12),
-                          ),
-                          const SizedBox(height: kSp),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
     );
   }
@@ -340,10 +432,25 @@ class _EQCurvePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (bands == 0) return;
 
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFF080A0E),
+            Color.lerp(const Color(0xFF080A0E), color, 0.10)!,
+            const Color(0xFF030407),
+          ],
+          stops: const [0.0, 0.52, 1.0],
+        ).createShader(Offset.zero & size),
+    );
+
     final paint =
         Paint()
           ..color = color
-          ..strokeWidth = 3.0
+          ..strokeWidth = 2.6
           ..style = PaintingStyle.stroke
           ..strokeCap = StrokeCap.round;
 
@@ -353,7 +460,7 @@ class _EQCurvePainter extends CustomPainter {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              color.withValues(alpha: 0.3),
+              color.withValues(alpha: 0.18),
               color.withValues(alpha: 0.0),
             ],
           ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
@@ -378,16 +485,21 @@ class _EQCurvePainter extends CustomPainter {
       points.add(Offset(x, y));
     }
 
-    // Draw grid lines behind everything
     final gridPaint =
         Paint()
-          ..color = Colors.white10
+          ..color = Colors.white.withValues(alpha: 0.055)
           ..strokeWidth = 1.0;
     canvas.drawLine(
       Offset(0, size.height / 2),
       Offset(size.width, size.height / 2),
-      gridPaint,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.12)
+        ..strokeWidth = 1.0,
     );
+    for (int i = 1; i < 4; i++) {
+      final y = size.height * (i / 4);
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
     for (final p in points) {
       canvas.drawLine(Offset(p.dx, 0), Offset(p.dx, size.height), gridPaint);
     }
@@ -417,11 +529,20 @@ class _EQCurvePainter extends CustomPainter {
     fillPath.close();
     canvas.drawPath(fillPath, fillPaint);
 
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color.withValues(alpha: 0.30)
+        ..strokeWidth = 9
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+    );
+
     // Draw stroke
     canvas.drawPath(path, paint);
 
-    // Draw points
-    final pointPaint = Paint()..color = Colors.white;
+    final pointPaint = Paint()..color = const Color(0xFFEFE6D6);
     for (int i = 0; i < points.length; i++) {
       final p = points[i];
       if (selectedBand != null && selectedBand == i) {

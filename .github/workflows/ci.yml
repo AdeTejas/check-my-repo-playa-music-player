@@ -11,14 +11,39 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      HAS_RELEASE_SIGNING: ${{ secrets.PLAYA_UPLOAD_KEYSTORE_BASE64 != '' }}
 
     steps:
       - uses: actions/checkout@v4
-      - uses: subosaurus/flutter-action@v2
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: subosito/flutter-action@v2
         with:
           flutter-version: stable
 
       - run: flutter pub get
-      - run: flutter format --set-exit-if-changed .
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter analyze
       - run: flutter test
-      - run: flutter build appbundle --release
+      - name: Configure release signing
+        if: env.HAS_RELEASE_SIGNING == 'true'
+        shell: bash
+        run: |
+          echo "${{ secrets.PLAYA_UPLOAD_KEYSTORE_BASE64 }}" | base64 --decode > android/upload-keystore.jks
+          cat > android/key.properties <<EOF
+          storeFile=../upload-keystore.jks
+          storePassword=${{ secrets.PLAYA_UPLOAD_STORE_PASSWORD }}
+          keyAlias=${{ secrets.PLAYA_UPLOAD_KEY_ALIAS }}
+          keyPassword=${{ secrets.PLAYA_UPLOAD_KEY_PASSWORD }}
+          EOF
+      - name: Build signed release app bundle
+        if: env.HAS_RELEASE_SIGNING == 'true'
+        run: flutter build appbundle --release
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_RELEASE_SIGNING == 'true'
+        with:
+          name: playa-release-appbundle
+          path: build/app/outputs/bundle/release/app-release.aab

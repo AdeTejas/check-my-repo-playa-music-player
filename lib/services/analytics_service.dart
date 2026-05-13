@@ -43,7 +43,9 @@ class AnalyticsService {
 
     // Load persisted errors
     final persistedErrors = _prefs.getStringList('error_reports') ?? [];
-    debugPrint('[ANALYTICS] Loaded ${persistedErrors.length} persisted error reports');
+    debugPrint(
+      '[ANALYTICS] Loaded ${persistedErrors.length} persisted error reports',
+    );
   }
 
   static void logEvent(String name, Map<String, Object?> params) {
@@ -117,9 +119,10 @@ class AnalyticsService {
     debugPrint('Errors logged: ${_errors.length}');
     if (_errors.isNotEmpty) {
       debugPrint('Recent errors:');
-      _errors.take(5).forEach((e) => debugPrint('  - ${e.title}: ${e.message}'));
+      _errors
+          .take(5)
+          .forEach((e) => debugPrint('  - ${e.title}: ${e.message}'));
     }
     debugPrint('===============================');
   }
 }
-

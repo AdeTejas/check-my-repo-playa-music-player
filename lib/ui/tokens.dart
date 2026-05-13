@@ -23,15 +23,15 @@ const EdgeInsets kPadScreenCompactX = EdgeInsets.symmetric(
   horizontal: kSp * 1.5,
 );
 
-const kColorBg = Color(0xFF06070A);
-const kColorSurface = Color(0xFF14161B);
-const kColorCard = Color(0xFF1B1F26);
-const kColorOn = Color(0xFFE8DCCA); // Light Wood/Beige for text
-const kColorOn2 = Color(0xFFA68B6C); // Muted Wood for secondary text
-const kColorAppAccent = Color(0xFF00E5FF); // Accents (Coruscant-inspired cyan)
+const kColorBg = Color(0xFF010104);
+const kColorSurface = Color(0xFF090A0E);
+const kColorCard = Color(0xFF11131A);
+const kColorOn = Color(0xFFFFE7D0); // Saturated warm paper text
+const kColorOn2 = Color(0xFFC89B73); // Rich bronze secondary text
+const kColorAppAccent = Color(0xFFB11226); // Imperial red accent
 
 // Glass tints (no blur):
 // - BlackTint: default glass surface
 // - Clear: for bottom nav / subtle overlays
-const kColorGlassBlackTint = Color(0x2A06070A);
-const kColorGlassClear = Color(0x0806070A);
+const kColorGlassBlackTint = Color(0x66010104);
+const kColorGlassClear = Color(0x1A010104);

@@ -3,7 +3,8 @@ import 'package:on_audio_query/on_audio_query.dart' as oaq;
 
 /// Lightweight cache layer for song metadata and artwork
 class MetadataCacheService {
-  static final MetadataCacheService _instance = MetadataCacheService._internal();
+  static final MetadataCacheService _instance =
+      MetadataCacheService._internal();
 
   factory MetadataCacheService() => _instance;
 
@@ -100,8 +101,9 @@ class MetadataCacheService {
     if (cache.length > _maxCacheSize) {
       // Remove oldest entries
       final toRemove = cache.length - _maxCacheSize;
-      final entries = cache.entries.toList()
-        ..sort((a, b) => a.value.expiresAt.compareTo(b.value.expiresAt));
+      final entries =
+          cache.entries.toList()
+            ..sort((a, b) => a.value.expiresAt.compareTo(b.value.expiresAt));
       for (int i = 0; i < toRemove; i++) {
         cache.remove(entries[i].key);
       }

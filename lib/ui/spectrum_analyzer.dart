@@ -75,12 +75,11 @@ class _SpectrumAnalyzerState extends State<SpectrumAnalyzer>
       final noise = _random.nextDouble();
 
       // Generate smooth random values for bars
-      final targetHeight =
-          (baseIntensity * frequencyFactor + noise * 0.4).clamp(0.0, 1.0);
+      final targetHeight = (baseIntensity * frequencyFactor + noise * 0.4)
+          .clamp(0.0, 1.0);
 
       // Smooth interpolation
-      _barHeights[i] =
-          _barHeights[i] * 0.7 + targetHeight * 0.3;
+      _barHeights[i] = _barHeights[i] * 0.7 + targetHeight * 0.3;
 
       // Peak tracking (decaying)
       if (_barHeights[i] > _peakHeights[i]) {
@@ -154,14 +153,10 @@ class _SpectrumPainter extends CustomPainter {
     canvas.drawRect(
       Rect.fromLTWH(0, 0, w, h),
       Paint()
-        ..shader = ui.Gradient.linear(
-          Offset(0, 0),
-          Offset(0, h),
-          [
-            Colors.black.withValues(alpha: 0.3),
-            Colors.black.withValues(alpha: 0.0),
-          ],
-        ),
+        ..shader = ui.Gradient.linear(Offset(0, 0), Offset(0, h), [
+          Colors.black.withValues(alpha: 0.3),
+          Colors.black.withValues(alpha: 0.0),
+        ]),
     );
 
     for (int i = 0; i < barHeights.length; i++) {
@@ -171,15 +166,16 @@ class _SpectrumPainter extends CustomPainter {
       final x = i * bandWidth;
 
       // Bar gradient
-      final barPaint = Paint()
-        ..shader = ui.Gradient.linear(
-          Offset(x, h),
-          Offset(x, h - barHeight),
-          [
-            barColor.withValues(alpha: 0.3),
-            barColor.withValues(alpha: 0.8),
-          ],
-        );
+      final barPaint =
+          Paint()
+            ..shader = ui.Gradient.linear(
+              Offset(x, h),
+              Offset(x, h - barHeight),
+              [
+                barColor.withValues(alpha: 0.3),
+                barColor.withValues(alpha: 0.8),
+              ],
+            );
 
       // Draw bar
       canvas.drawRRect(
@@ -197,9 +193,10 @@ class _SpectrumPainter extends CustomPainter {
 
       // Draw peak indicator
       if (peakHeight > 1) {
-        final peakPaint = Paint()
-          ..color = peakColor.withValues(alpha: 0.9)
-          ..strokeWidth = 2;
+        final peakPaint =
+            Paint()
+              ..color = peakColor.withValues(alpha: 0.9)
+              ..strokeWidth = 2;
 
         canvas.drawLine(
           Offset(x + bandWidth * 0.15, h - peakHeight),
@@ -230,10 +227,7 @@ class _ShimmerPainter extends CustomPainter {
   final double progress;
   final Color barColor;
 
-  _ShimmerPainter({
-    required this.progress,
-    required this.barColor,
-  });
+  _ShimmerPainter({required this.progress, required this.barColor});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -246,11 +240,15 @@ class _ShimmerPainter extends CustomPainter {
     for (int i = 0; i < bandCount; i++) {
       final x = i * bandWidth;
       final wavePosition = (i / bandCount + progress) % 1.0;
-      final barHeight = h * 0.3 * (0.5 + 0.5 * math.sin(wavePosition * math.pi * 2));
+      final barHeight =
+          h * 0.3 * (0.5 + 0.5 * math.sin(wavePosition * math.pi * 2));
 
-      final barPaint = Paint()
-        ..color = barColor.withValues(alpha: 0.4 + 0.3 * math.sin(wavePosition * math.pi * 4))
-        ..style = PaintingStyle.fill;
+      final barPaint =
+          Paint()
+            ..color = barColor.withValues(
+              alpha: 0.4 + 0.3 * math.sin(wavePosition * math.pi * 4),
+            )
+            ..style = PaintingStyle.fill;
 
       canvas.drawRRect(
         RRect.fromRectAndRadius(

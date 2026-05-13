@@ -6,14 +6,12 @@ import 'package:just_audio/just_audio.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
-import 'dart:math' as math;
 
 import '../services/player_controller.dart';
 import '../services/settings_service.dart';
 import '../services/database_service.dart';
 import '../models/song_metadata.dart';
 import '../ui/tokens.dart';
-import '../ui/spectrum_analyzer.dart';
 import '../ui/glass_panel.dart';
 import '../ui/turntable_widget.dart';
 import '../ui/waveform_widget.dart';
@@ -75,139 +73,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   return StreamBuilder<PlayerState>(
                     stream: p.playerStateStream,
                     builder: (context, _) {
-                      return OrientationBuilder(
-                        builder: (context, orientation) {
-                          if (orientation == Orientation.landscape) {
-                            // Landscape Layout
-                            return Row(
-                              children: [
-                                // Left: Turntable
-                                Expanded(
-                                  flex: 6,
-                                  child: Center(
-                                    child: AspectRatio(
-                                      aspectRatio: 1.0,
-                                      child: RepaintBoundary(
-                                        child: TurntableDeck(
-                                          ctrl: ctrl,
-                                          item: tag,
-                                          isVisible: widget.isVisible,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                // Right: Controls
-                                Expanded(
-                                  flex: 3,
-                                  child: SingleChildScrollView(
-                                    padding: const EdgeInsets.all(kSp),
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        // Track Info
-                                        _TrackInfoPanel(item: tag, playerCtrl: ctrl),
-                                        const SizedBox(height: kSp * 2),
-                                        _WaveformSection(
-                                          item: tag,
-                                          player: p,
-                                          height: 80,
-                                        ),
-                                        const SizedBox(height: kSp * 2),
-
-                                        // Transport
-                                        _TransportBar(ctrl: ctrl),
-                                        const SizedBox(height: kSp),
-                                        _SecondaryControls(ctrl: ctrl),
-                                        const SizedBox(height: kSp),
-                                        // Favorite Button
-                                        ValueListenableBuilder<List<String>>(
-                                          valueListenable:
-                                              ctrl.favoritesNotifier,
-                                          builder: (context, favorites, _) {
-                                            final isFav =
-                                                tag != null &&
-                                                favorites.contains(tag.id);
-                                            return IconButton(
-                                              onPressed:
-                                                  tag == null
-                                                      ? null
-                                                      : () =>
-                                                          ctrl.toggleFavorite(
-                                                            tag.id,
-                                                          ),
-                                              icon: Icon(
-                                                isFav
-                                                    ? PhosphorIconsFill.heart
-                                                    : PhosphorIconsRegular
-                                                        .heart,
-                                                color:
-                                                    isFav
-                                                        ? Colors.redAccent
-                                                        : kColorOn2,
-                                                size: 28,
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
+                      return LayoutBuilder(
+                        builder: (context, constraints) {
+                          final orientation = MediaQuery.orientationOf(context);
+                          if (orientation == Orientation.landscape &&
+                              constraints.maxWidth >= 780) {
+                            return _NowPlayingLandscape(
+                              ctrl: ctrl,
+                              item: tag,
+                              isVisible: widget.isVisible,
                             );
                           } else {
-                            // Portrait Layout
-                            return LayoutBuilder(
-                              builder: (context, constraints) {
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: kSp * 1.5,
-                                  ),
-                                  child: Column(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.start,
-                                    children: [
-                                      const SizedBox(height: kSp),
-                                      Expanded(
-                                        flex: 7,
-                                        child: Center(
-                                          child: AspectRatio(
-                                            aspectRatio: 1.0,
-                                            child: RepaintBoundary(
-                                            child: Stack(
-                                              children: [
-                                                Positioned.fill(
-                                                  child: TurntableDeck(
-                                                    ctrl: ctrl,
-                                                    item: tag,
-                                                    isVisible: widget.isVisible,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: kSp),
-                                      _TrackInfoPanel(item: tag, playerCtrl: ctrl),
-                                      const SizedBox(height: kSp * 0.75),
-                                      _WaveformSection(
-                                        item: tag,
-                                        player: p,
-                                        height: 56,
-                                      ),
-                                      const SizedBox(height: kSp * 0.75),
-                                      _TransportBar(ctrl: ctrl),
-                                      const SizedBox(height: kSp * 0.75),
-                                      _SecondaryControls(ctrl: ctrl),
-                                      const SizedBox(height: kSp),
-                                    ],
-                                  ),
-                                );
-                              },
+                            return _NowPlayingPortrait(
+                              ctrl: ctrl,
+                              item: tag,
+                              isVisible: widget.isVisible,
                             );
                           }
                         },
@@ -225,14 +105,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
           top: 0,
           child: IgnorePointer(
             child: Container(
-              height: topInset + kSp * 3.0,
+              height: topInset + kSp * 2.0,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    kColorBg.withValues(alpha: 0.98),
-                    kColorBg.withValues(alpha: 0.10),
+                    kColorBg.withValues(alpha: 0.72),
+                    kColorBg.withValues(alpha: 0.0),
                   ],
                 ),
               ),
@@ -244,9 +124,211 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 }
 
+class _NowPlayingPortrait extends StatelessWidget {
+  final PlayerController ctrl;
+  final MediaItem? item;
+  final bool isVisible;
+
+  const _NowPlayingPortrait({
+    required this.ctrl,
+    required this.item,
+    required this.isVisible,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxHeight < 760;
+        final tight = constraints.maxHeight < 690;
+        final deckSide = <double>[
+          constraints.maxWidth - kSp * 0.25,
+          constraints.maxHeight * (tight ? 0.40 : (compact ? 0.46 : 0.48)),
+          516.0,
+        ].reduce((a, b) => a < b ? a : b);
+        final deckTopGap = tight ? kSp * 2.0 : kSp * 3.0;
+
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            kSp,
+            tight ? 0 : kSp * 0.25,
+            kSp,
+            kSp * 0.5,
+          ),
+          child: Column(
+            children: [
+              SizedBox(height: deckTopGap),
+              SizedBox(
+                height: deckSide,
+                child: Center(
+                  child: SizedBox.square(
+                    dimension: deckSide,
+                    child: RepaintBoundary(
+                      child: TurntableDeck(
+                        ctrl: ctrl,
+                        item: item,
+                        isVisible: isVisible,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(height: tight ? kSp * 0.5 : kSp),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: tight ? kSp * 0.25 : kSp),
+                  child: Align(
+                    alignment: Alignment.bottomRight,
+                    child: SizedBox(
+                      width: constraints.maxWidth - kSp * 0.5,
+                      child: _NowPlayingSurface(
+                        compact: true,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _TrackInfoPanel(
+                              item: item,
+                              playerCtrl: ctrl,
+                              compact: true,
+                            ),
+                            const SizedBox(height: 6),
+                            _RocinanteProgress(
+                              item: item,
+                              player: ctrl.player,
+                              compact: true,
+                            ),
+                            const SizedBox(height: 5),
+                            _TransportBar(ctrl: ctrl, compact: true),
+                            const SizedBox(height: 5),
+                            _SecondaryControls(ctrl: ctrl, compact: true),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _NowPlayingLandscape extends StatelessWidget {
+  final PlayerController ctrl;
+  final MediaItem? item;
+  final bool isVisible;
+
+  const _NowPlayingLandscape({
+    required this.ctrl,
+    required this.item,
+    required this.isVisible,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(kSp * 2, kSp, kSp * 2, kSp * 2),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 6,
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: RepaintBoundary(
+                  child: TurntableDeck(
+                    ctrl: ctrl,
+                    item: item,
+                    isVisible: isVisible,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: kSp * 2),
+          Expanded(
+            flex: 4,
+            child: _NowPlayingSurface(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _TrackInfoPanel(item: item, playerCtrl: ctrl, compact: true),
+                  const SizedBox(height: kSp * 0.5),
+                  _RocinanteProgress(item: item, player: ctrl.player),
+                  const SizedBox(height: kSp * 0.5),
+                  _TransportBar(ctrl: ctrl),
+                  const SizedBox(height: kSp * 0.5),
+                  _SecondaryControls(ctrl: ctrl, compact: true),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NowPlayingSurface extends StatelessWidget {
+  final Widget child;
+  final bool compact;
+
+  const _NowPlayingSurface({required this.child, this.compact = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassPanel(
+      useShader: false,
+      borderRadius: BorderRadius.circular(22),
+      borderWidth: 1.5,
+      borderColor: Colors.white.withValues(alpha: 0.15),
+      backgroundColor: kColorGlassClear,
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? kSp * 0.85 : kSp * 1.5,
+        vertical: compact ? kSp * 0.65 : kSp * 1.15,
+      ),
+      child: child,
+    );
+  }
+}
+
+class _RocinanteProgress extends StatelessWidget {
+  final MediaItem? item;
+  final AudioPlayer player;
+  final bool compact;
+
+  const _RocinanteProgress({
+    required this.item,
+    required this.player,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final path = item?.extras?['path'];
+    if (item == null || path is! String || path.isEmpty) {
+      return SizedBox(height: compact ? 46 : 52);
+    }
+
+    return SizedBox(
+      height: compact ? 46 : 52,
+      child: WaveformWidget(
+        path: path,
+        player: player,
+        playedColor: Theme.of(context).colorScheme.primary,
+        item: item,
+      ),
+    );
+  }
+}
+
 class _TransportBar extends StatelessWidget {
   final PlayerController ctrl;
-  const _TransportBar({required this.ctrl});
+  final bool compact;
+  const _TransportBar({required this.ctrl, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
@@ -295,8 +377,8 @@ class _TransportBar extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: accent,
             shape: const CircleBorder(),
-            padding: const EdgeInsets.all(14),
-            elevation: 6,
+            padding: EdgeInsets.all(compact ? 8 : 12),
+            elevation: 4,
             shadowColor: Colors.black54,
           ),
           child: StreamBuilder<bool>(
@@ -309,7 +391,7 @@ class _TransportBar extends StatelessWidget {
                 child: PhosphorIcon(
                   playing ? PhosphorIconsFill.pause : PhosphorIconsFill.play,
                   key: ValueKey(playing),
-                  size: 30,
+                  size: compact ? 22 : 27,
                   color: Colors.white,
                 ),
               );
@@ -346,8 +428,8 @@ class _TransportBar extends StatelessWidget {
       builder: (context, constraints) {
         if (constraints.maxWidth < 260) {
           return Wrap(
-            spacing: kSp,
-            runSpacing: kSp * 0.6,
+            spacing: kSp * 0.7,
+            runSpacing: kSp * 0.45,
             alignment: WrapAlignment.center,
             children: controls,
           );
@@ -363,7 +445,8 @@ class _TransportBar extends StatelessWidget {
 
 class _SecondaryControls extends StatefulWidget {
   final PlayerController ctrl;
-  const _SecondaryControls({required this.ctrl});
+  final bool compact;
+  const _SecondaryControls({required this.ctrl, this.compact = false});
 
   @override
   State<_SecondaryControls> createState() => _SecondaryControlsState();
@@ -388,7 +471,26 @@ class _SecondaryControlsState extends State<_SecondaryControls> {
       final item = _chipOrder.removeAt(oldIndex);
       _chipOrder.insert(newIndex, item);
     });
+    SettingsService.instance.setControlChipOrder(_chipOrder);
     HapticFeedback.selectionClick();
+  }
+
+  void _handleReorderTap(int index) {
+    final selected = _selectedChipIndex;
+    if (selected == null) {
+      setState(() => _selectedChipIndex = index);
+      HapticFeedback.selectionClick();
+      return;
+    }
+
+    if (selected == index) {
+      setState(() => _selectedChipIndex = null);
+      HapticFeedback.selectionClick();
+      return;
+    }
+
+    _reorderChips(selected, index);
+    setState(() => _selectedChipIndex = null);
   }
 
   Widget _buildChip(String chipId, BuildContext context, int index) {
@@ -403,16 +505,15 @@ class _SecondaryControlsState extends State<_SecondaryControls> {
             final shuf = snap.data ?? false;
             return _ReorderableChipIcon(
               key: const ValueKey('shuffle'),
-              icon: shuf ? PhosphorIconsFill.shuffle : PhosphorIconsLight.shuffle,
+              icon:
+                  shuf ? PhosphorIconsFill.shuffle : PhosphorIconsLight.shuffle,
               label: 'Shuffle',
               active: shuf,
               isReordering: _isReordering,
               isSelected: _selectedChipIndex == index,
               onTap: () async {
                 if (_isReordering) {
-                  // In reorder mode, tapping selects this chip for moving
-                  setState(() => _selectedChipIndex = index);
-                  HapticFeedback.selectionClick();
+                  _handleReorderTap(index);
                   return;
                 }
                 if (!widget.ctrl.isReady) return;
@@ -420,13 +521,17 @@ class _SecondaryControlsState extends State<_SecondaryControls> {
                 if (!shuf) await p.shuffle();
                 HapticFeedback.selectionClick();
               },
-              onLongPress: _isReordering ? () {
-                // In reorder mode, long-press moves selected chip here
-                if (_selectedChipIndex != null && _selectedChipIndex != index) {
-                  _reorderChips(_selectedChipIndex!, index);
-                  setState(() => _selectedChipIndex = null);
-                }
-              } : null,
+              onLongPress:
+                  _isReordering
+                      ? () {
+                        // In reorder mode, long-press moves selected chip here
+                        if (_selectedChipIndex != null &&
+                            _selectedChipIndex != index) {
+                          _reorderChips(_selectedChipIndex!, index);
+                          setState(() => _selectedChipIndex = null);
+                        }
+                      }
+                      : null,
             );
           },
         );
@@ -437,38 +542,44 @@ class _SecondaryControlsState extends State<_SecondaryControls> {
           initialData: p.loopMode,
           builder: (_, snap) {
             final lm = snap.data ?? LoopMode.off;
-            final next = lm == LoopMode.off
-                ? LoopMode.one
-                : (lm == LoopMode.one ? LoopMode.all : LoopMode.off);
-            final icon = lm == LoopMode.one
-                ? PhosphorIconsBold.numberCircleOne
-                : PhosphorIconsBold.arrowsClockwise;
+            final next =
+                lm == LoopMode.off
+                    ? LoopMode.one
+                    : (lm == LoopMode.one ? LoopMode.all : LoopMode.off);
+            final icon =
+                lm == LoopMode.one
+                    ? PhosphorIconsBold.numberCircleOne
+                    : PhosphorIconsBold.arrowsClockwise;
             final active = lm != LoopMode.off;
             return _ReorderableChipIcon(
               key: ValueKey('repeat'),
               icon: icon,
-              label: lm == LoopMode.all
-                  ? 'Repeat All'
-                  : (lm == LoopMode.one ? 'Repeat One' : 'Repeat'),
+              label:
+                  lm == LoopMode.all
+                      ? 'Repeat All'
+                      : (lm == LoopMode.one ? 'Repeat One' : 'Repeat'),
               active: active,
               isReordering: _isReordering,
               isSelected: _selectedChipIndex == index,
               onTap: () {
                 if (_isReordering) {
-                  setState(() => _selectedChipIndex = index);
-                  HapticFeedback.selectionClick();
+                  _handleReorderTap(index);
                   return;
                 }
                 if (!widget.ctrl.isReady) return;
                 p.setLoopMode(next);
                 HapticFeedback.selectionClick();
               },
-              onLongPress: _isReordering ? () {
-                if (_selectedChipIndex != null && _selectedChipIndex != index) {
-                  _reorderChips(_selectedChipIndex!, index);
-                  setState(() => _selectedChipIndex = null);
-                }
-              } : null,
+              onLongPress:
+                  _isReordering
+                      ? () {
+                        if (_selectedChipIndex != null &&
+                            _selectedChipIndex != index) {
+                          _reorderChips(_selectedChipIndex!, index);
+                          setState(() => _selectedChipIndex = null);
+                        }
+                      }
+                      : null,
             );
           },
         );
@@ -477,29 +588,32 @@ class _SecondaryControlsState extends State<_SecondaryControls> {
         return _ReorderableChipIcon(
           key: ValueKey('neural_mix'),
           icon: PhosphorIconsBold.brain,
-          label: 'Neural Mix',
+          label: 'Sonic Flow',
           active: false,
           isReordering: _isReordering,
           isSelected: _selectedChipIndex == index,
           onTap: () async {
             if (_isReordering) {
-              setState(() => _selectedChipIndex = index);
-              HapticFeedback.selectionClick();
+              _handleReorderTap(index);
               return;
             }
             if (!widget.ctrl.isReady) return;
-            showToast(context, 'Generating Neural Mix...');
+            showToast(context, 'Building Sonic Flow...');
             await widget.ctrl.smartShuffle();
             if (!context.mounted) return;
-            showToast(context, 'Mix Ready');
+            showToast(context, 'Sonic Flow ready');
             HapticFeedback.mediumImpact();
           },
-          onLongPress: _isReordering ? () {
-            if (_selectedChipIndex != null && _selectedChipIndex != index) {
-              _reorderChips(_selectedChipIndex!, index);
-              setState(() => _selectedChipIndex = null);
-            }
-          } : null,
+          onLongPress:
+              _isReordering
+                  ? () {
+                    if (_selectedChipIndex != null &&
+                        _selectedChipIndex != index) {
+                      _reorderChips(_selectedChipIndex!, index);
+                      setState(() => _selectedChipIndex = null);
+                    }
+                  }
+                  : null,
         );
 
       case 'speed':
@@ -512,8 +626,7 @@ class _SecondaryControlsState extends State<_SecondaryControls> {
           isSelected: _selectedChipIndex == index,
           onTap: () async {
             if (_isReordering) {
-              setState(() => _selectedChipIndex = index);
-              HapticFeedback.selectionClick();
+              _handleReorderTap(index);
               return;
             }
             if (!widget.ctrl.isReady) return;
@@ -536,12 +649,16 @@ class _SecondaryControlsState extends State<_SecondaryControls> {
               }
             }
           },
-          onLongPress: _isReordering ? () {
-            if (_selectedChipIndex != null && _selectedChipIndex != index) {
-              _reorderChips(_selectedChipIndex!, index);
-              setState(() => _selectedChipIndex = null);
-            }
-          } : null,
+          onLongPress:
+              _isReordering
+                  ? () {
+                    if (_selectedChipIndex != null &&
+                        _selectedChipIndex != index) {
+                      _reorderChips(_selectedChipIndex!, index);
+                      setState(() => _selectedChipIndex = null);
+                    }
+                  }
+                  : null,
         );
 
       case 'screensaver':
@@ -558,25 +675,28 @@ class _SecondaryControlsState extends State<_SecondaryControls> {
               isSelected: _selectedChipIndex == index,
               onTap: () async {
                 if (_isReordering) {
-                  setState(() => _selectedChipIndex = index);
-                  HapticFeedback.selectionClick();
+                  _handleReorderTap(index);
                   return;
                 }
-                await SettingsService.instance.setScreensaverEnabled(!enabled);
                 HapticFeedback.selectionClick();
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ScreensaverScreen()),
+                );
               },
-              onLongPress: () {
+              onLongPress: () async {
                 if (_isReordering) {
-                  if (_selectedChipIndex != null && _selectedChipIndex != index) {
+                  if (_selectedChipIndex != null &&
+                      _selectedChipIndex != index) {
                     _reorderChips(_selectedChipIndex!, index);
                     setState(() => _selectedChipIndex = null);
                   }
                   return;
                 }
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const ScreensaverScreen(),
-                  ),
+                await SettingsService.instance.setScreensaverEnabled(!enabled);
+                if (!context.mounted) return;
+                showToast(
+                  context,
+                  enabled ? 'Screensaver disabled' : 'Screensaver enabled',
                 );
               },
             );
@@ -593,8 +713,7 @@ class _SecondaryControlsState extends State<_SecondaryControls> {
           isSelected: _selectedChipIndex == index,
           onTap: () {
             if (_isReordering) {
-              setState(() => _selectedChipIndex = index);
-              HapticFeedback.selectionClick();
+              _handleReorderTap(index);
               return;
             }
             if (!widget.ctrl.isReady) return;
@@ -632,10 +751,15 @@ class _SecondaryControlsState extends State<_SecondaryControls> {
                     ),
                     TextButton(
                       onPressed: () async {
-                        await widget.ctrl.addBookmark(note: controller.text);
+                        final added = await widget.ctrl.addBookmark(
+                          note: controller.text,
+                        );
                         if (!ctx.mounted) return;
                         Navigator.pop(ctx);
-                        showToast(context, 'Chapter added');
+                        showToast(
+                          context,
+                          added ? 'Chapter added' : 'No active track',
+                        );
                         HapticFeedback.selectionClick();
                       },
                       child: Text('Add', style: TextStyle(color: a)),
@@ -674,8 +798,7 @@ class _SecondaryControlsState extends State<_SecondaryControls> {
           isSelected: _selectedChipIndex == index,
           onTap: () {
             if (_isReordering) {
-              setState(() => _selectedChipIndex = index);
-              HapticFeedback.selectionClick();
+              _handleReorderTap(index);
               return;
             }
             if (!widget.ctrl.isReady) return;
@@ -686,12 +809,16 @@ class _SecondaryControlsState extends State<_SecondaryControls> {
               builder: (_) => LyricsSheet(ctrl: widget.ctrl),
             );
           },
-          onLongPress: _isReordering ? () {
-            if (_selectedChipIndex != null && _selectedChipIndex != index) {
-              _reorderChips(_selectedChipIndex!, index);
-              setState(() => _selectedChipIndex = null);
-            }
-          } : null,
+          onLongPress:
+              _isReordering
+                  ? () {
+                    if (_selectedChipIndex != null &&
+                        _selectedChipIndex != index) {
+                      _reorderChips(_selectedChipIndex!, index);
+                      setState(() => _selectedChipIndex = null);
+                    }
+                  }
+                  : null,
         );
 
       default:
@@ -701,54 +828,57 @@ class _SecondaryControlsState extends State<_SecondaryControls> {
 
   @override
   Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
     return Column(
       children: [
-        // Reorder toggle button
         Align(
-          alignment: Alignment.centerRight,
-          child: GestureDetector(
-            onLongPress: () {
-              setState(() {
-                _isReordering = !_isReordering;
-                if (!_isReordering) {
-                  _selectedChipIndex = null;
-                }
-              });
-              HapticFeedback.mediumImpact();
-              if (_isReordering) {
-                showToast(context, 'Tap to select, long-press to move');
-              } else {
-                SettingsService.instance.setControlChipOrder(_chipOrder);
-                showToast(context, 'Order saved');
-              }
-            },
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: _isReordering ? Colors.blue.withValues(alpha: 0.2) : Colors.transparent,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Icon(
-                _isReordering ? Icons.check : Icons.reorder,
-                size: 16,
-                color: _isReordering ? Colors.blue : kColorOn2,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 4),
-        // Chips
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
+          alignment: Alignment.center,
           child: Wrap(
-            spacing: kSp,
-            runSpacing: kSp,
+            spacing: widget.compact ? 4 : 6,
+            runSpacing: widget.compact ? 4 : 6,
             alignment: WrapAlignment.center,
-            children: _chipOrder.asMap().entries.map((entry) {
-              final index = entry.key;
-              final chipId = entry.value;
-              return _buildChip(chipId, context, index);
-            }).toList(),
+            children: [
+              Tooltip(
+                message: _isReordering ? 'Done arranging' : 'Arrange functions',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () {
+                    setState(() {
+                      _isReordering = !_isReordering;
+                      _selectedChipIndex = null;
+                    });
+                    HapticFeedback.selectionClick();
+                  },
+                  child: Container(
+                    width: widget.compact ? 22 : 26,
+                    height: widget.compact ? 22 : 26,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color:
+                          _isReordering
+                              ? accent.withValues(alpha: 0.18)
+                              : Colors.white.withValues(alpha: 0.05),
+                      border: Border.all(
+                        color:
+                            _isReordering
+                                ? accent.withValues(alpha: 0.7)
+                                : Colors.white12,
+                      ),
+                    ),
+                    child: Icon(
+                      _isReordering ? Icons.check : Icons.drag_indicator,
+                      size: 14,
+                      color: _isReordering ? accent : kColorOn2,
+                    ),
+                  ),
+                ),
+              ),
+              ..._chipOrder.asMap().entries.map((entry) {
+                final index = entry.key;
+                final chipId = entry.value;
+                return _buildChip(chipId, context, index);
+              }),
+            ],
           ),
         ),
       ],
@@ -765,8 +895,10 @@ class _IconBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      icon: PhosphorIcon(icon, size: 26, color: kColorOn),
+      icon: PhosphorIcon(icon, size: 20, color: kColorOn),
       onPressed: onTap,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
     );
   }
 }
@@ -774,8 +906,13 @@ class _IconBtn extends StatelessWidget {
 class _TrackInfoPanel extends StatelessWidget {
   final MediaItem? item;
   final PlayerController playerCtrl;
+  final bool compact;
 
-  const _TrackInfoPanel({required this.item, required this.playerCtrl});
+  const _TrackInfoPanel({
+    required this.item,
+    required this.playerCtrl,
+    this.compact = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -786,128 +923,22 @@ class _TrackInfoPanel extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 20,
+          style: TextStyle(
+            fontSize: compact ? 15 : kTextLg,
             fontWeight: FontWeight.w700,
-            letterSpacing: -0.5,
+            letterSpacing: 0,
           ),
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: compact ? 2 : 3),
         Text(
           item?.artist ?? 'Unknown',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: kColorOn2,
-            fontSize: 16,
-          ),
+          style: TextStyle(color: kColorOn2, fontSize: compact ? 11 : kTextSm),
         ),
-        if (item != null) _SonicDnaBadge(songId: item!.id),
-        const SizedBox(height: kSp),
-        ValueListenableBuilder<List<String>>(
-          valueListenable: playerCtrl.favoritesNotifier,
-          builder: (context, favorites, _) {
-            final isFav = item != null && favorites.contains(item!.id);
-            return IconButton(
-              onPressed: item == null
-                  ? null
-                  : () => playerCtrl.toggleFavorite(item!.id),
-              icon: Icon(
-                isFav ? PhosphorIconsFill.heart : PhosphorIconsRegular.heart,
-                color: isFav ? Colors.redAccent : kColorOn2,
-                size: 28,
-              ),
-            );
-          },
-        ),
+        if (!compact && item != null) _SonicDnaBadge(songId: item!.id),
       ],
-    );
-  }
-}
-
-class _WaveformSection extends StatelessWidget {
-  final MediaItem? item;
-  final AudioPlayer player;
-  final double height;
-
-  const _WaveformSection({
-    required this.item,
-    required this.player,
-    this.height = 80,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (!SettingsService.instance.showWaveforms || item == null) {
-      return const SizedBox();
-    }
-    final path = item!.extras?['path'];
-    if (path is! String || path.isEmpty) {
-      return const SizedBox();
-    }
-
-    return StreamBuilder<Duration>(
-      stream: player.positionStream,
-      builder: (context, posSnapshot) {
-        final position = posSnapshot.data ?? Duration.zero;
-        final duration = player.duration ?? const Duration(seconds: 1);
-        final progress = duration.inMilliseconds > 0
-            ? (position.inMilliseconds / duration.inMilliseconds)
-                .clamp(0.0, 1.0)
-            : 0.0;
-
-        return StreamBuilder<PlayerState>(
-          stream: player.playerStateStream,
-          builder: (context, stateSnapshot) {
-            final isPlaying =
-                stateSnapshot.data?.playing ?? false;
-
-            return SizedBox(
-              height: height + 32,
-              child: Align(
-                alignment: Alignment.center,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final maxW = math.min(560.0, constraints.maxWidth);
-                    return ConstrainedBox(
-                      constraints: BoxConstraints(maxWidth: maxW),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            height: height,
-                            child: WaveformWidget(
-                              path: path,
-                              player: player,
-                              playedColor:
-                                  Color(SettingsService.instance.accentColor),
-                              item: item,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          SizedBox(
-                            height: 28,
-                            child: SpectrumAnalyzer(
-                              height: 28,
-                              barColor: Color(
-                                SettingsService.instance.accentColor,
-                              ).withValues(alpha: 0.7),
-                              peakColor: Colors.white,
-                              playbackPosition: progress,
-                              isPlaying: isPlaying,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            );
-          },
-        );
-      },
     );
   }
 }
@@ -946,70 +977,97 @@ class _ReorderableChipIconState extends State<_ReorderableChipIcon> {
     final accent = Theme.of(context).colorScheme.primary;
 
     return GestureDetector(
-      onTap: widget.isReordering ? null : widget.onTap,
-      onLongPress: widget.isReordering ? null : widget.onLongPress,
-      onLongPressStart: widget.isReordering ? (details) {
-        setState(() => _isDragging = true);
-        HapticFeedback.mediumImpact();
-      } : null,
-      onLongPressMoveUpdate: widget.isReordering ? (details) {
-        setState(() => _dragOffset = details.localPosition);
-      } : null,
-      onLongPressEnd: widget.isReordering ? (details) {
-        setState(() {
-          _isDragging = false;
-          _dragOffset = Offset.zero;
-        });
-      } : null,
+      onTap: widget.onTap,
+      onLongPress: widget.onLongPress,
+      onLongPressStart:
+          widget.isReordering
+              ? (details) {
+                setState(() => _isDragging = true);
+                HapticFeedback.mediumImpact();
+              }
+              : null,
+      onLongPressMoveUpdate:
+          widget.isReordering
+              ? (details) {
+                setState(() => _dragOffset = details.localPosition);
+              }
+              : null,
+      onLongPressEnd:
+          widget.isReordering
+              ? (details) {
+                setState(() {
+                  _isDragging = false;
+                  _dragOffset = Offset.zero;
+                });
+              }
+              : null,
       child: Transform.translate(
         offset: _isDragging ? _dragOffset : Offset.zero,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          height: 28,
+          padding: const EdgeInsets.symmetric(horizontal: 7),
           decoration: BoxDecoration(
-            color: widget.active
-                ? accent.withValues(alpha: 0.2)
-                : (widget.isSelected
-                    ? Colors.orange.withValues(alpha: 0.3)
-                    : (widget.isReordering ? Colors.blue.withValues(alpha: 0.1) : Colors.transparent)),
-            borderRadius: BorderRadius.circular(20),
+            color:
+                widget.active
+                    ? accent.withValues(alpha: 0.2)
+                    : (widget.isSelected
+                        ? accent.withValues(alpha: 0.30)
+                        : (widget.isReordering
+                            ? accent.withValues(alpha: 0.10)
+                            : kColorOn.withValues(alpha: 0.035))),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: widget.active
-                  ? accent
-                  : (widget.isSelected
-                      ? Colors.orange
-                      : (widget.isReordering ? Colors.blue.withValues(alpha: 0.5) : Colors.white10)),
+              color:
+                  widget.active
+                      ? accent
+                      : (widget.isSelected
+                          ? accent
+                          : (widget.isReordering
+                              ? accent.withValues(alpha: 0.48)
+                              : kColorOn.withValues(alpha: 0.13))),
             ),
-            boxShadow: _isDragging ? [
-              BoxShadow(
-                color: Colors.blue.withValues(alpha: 0.3),
-                blurRadius: 8,
-                spreadRadius: 2,
-              ),
-            ] : null,
+            boxShadow:
+                _isDragging
+                    ? [
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.3),
+                        blurRadius: 8,
+                        spreadRadius: 2,
+                      ),
+                    ]
+                    : null,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (widget.isReordering) ...[
                 Icon(
-                  widget.isSelected ? Icons.radio_button_checked : Icons.drag_indicator,
-                  size: 14,
-                  color: widget.isSelected ? Colors.orange : Colors.blue,
+                  widget.isSelected
+                      ? Icons.radio_button_checked
+                      : Icons.drag_indicator,
+                  size: 13,
+                  color:
+                      widget.isSelected
+                          ? accent
+                          : accent.withValues(alpha: 0.72),
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 3),
               ],
               Icon(
                 widget.icon,
-                size: 16,
+                size: 15,
                 color: widget.active ? accent : kColorOn2,
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 3),
               Text(
                 widget.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: widget.active ? accent : kColorOn2,
-                  fontSize: 12,
-                  fontWeight: widget.active ? FontWeight.bold : FontWeight.normal,
+                  fontSize: 10,
+                  fontWeight:
+                      widget.active ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
             ],
@@ -1124,17 +1182,22 @@ class _QueueSheetState extends State<QueueSheet>
         return ReorderableListView.builder(
           scrollController: widget.scrollController,
           itemCount: sequence.length,
-          onReorder: (oldIndex, newIndex) {
+          onReorder: (oldIndex, newIndex) async {
             if (oldIndex < newIndex) newIndex--;
-            showToast(context, 'Reordering not implemented in this demo');
+            await widget.ctrl.moveQueueItem(oldIndex, newIndex);
+            HapticFeedback.selectionClick();
           },
           itemBuilder: (context, index) {
             final item = sequence[index];
             final isPlaying = index == state?.currentIndex;
+            final mediaItem = item.tag;
+            final why =
+                mediaItem.extras?['sonicFlowWhy']?.toString() ??
+                mediaItem.extras?['neuralMixWhy']?.toString();
             return ListTile(
               key: ValueKey(item),
               title: Text(
-                item.tag.title,
+                mediaItem.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -1143,8 +1206,10 @@ class _QueueSheetState extends State<QueueSheet>
                 ),
               ),
               subtitle: Text(
-                item.tag.artist ?? 'Unknown',
-                maxLines: 1,
+                why == null
+                    ? (mediaItem.artist ?? 'Unknown')
+                    : '${mediaItem.artist ?? 'Unknown'} • $why',
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: kColorOn2, fontSize: 12),
               ),
@@ -1385,7 +1450,9 @@ class BookmarksSheet extends StatelessWidget {
                     itemCount: bookmarks.length,
                     itemBuilder: (context, index) {
                       final b = bookmarks[index];
-                      final pos = Duration(milliseconds: (b['pos'] as int?) ?? 0);
+                      final pos = Duration(
+                        milliseconds: (b['pos'] as int?) ?? 0,
+                      );
                       return ListTile(
                         leading: Text(
                           _fmt(pos),
@@ -1442,60 +1509,179 @@ String _fmt(Duration d) {
   return '$m:$s';
 }
 
-class _SonicDnaBadge extends StatelessWidget {
+class _SonicDnaBadge extends StatefulWidget {
   final String songId;
   const _SonicDnaBadge({required this.songId});
 
   @override
+  State<_SonicDnaBadge> createState() => _SonicDnaBadgeState();
+}
+
+class _SonicDnaBadgeState extends State<_SonicDnaBadge> {
+  late Future<SongMetadata?> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = DatabaseService.instance.getSongMetadata(widget.songId);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SonicDnaBadge oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.songId != widget.songId) {
+      _future = DatabaseService.instance.getSongMetadata(widget.songId);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return FutureBuilder<SongMetadata?>(
-      future: DatabaseService.instance.getSongMetadata(songId),
+      future: _future,
       builder: (context, snapshot) {
         final meta = snapshot.data;
         if (meta == null || meta.bpm == null) return const SizedBox.shrink();
 
-        return Container(
-          margin: const EdgeInsets.only(top: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1B1F26),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white10),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                PhosphorIconsBold.waveform,
-                size: 14,
-                color: Color(0xFF8D5524),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                '${meta.bpm!.toInt()} BPM',
-                style: const TextStyle(
-                  color: Color(0xFFE8DCCA),
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+        final source =
+            meta.isManualDna ? 'manual' : (meta.bpmSource ?? 'saved');
+        final confidence = meta.bpmConfidence;
+        final confidenceText =
+            source == 'tag'
+                ? 'tag'
+                : source == 'manual'
+                ? 'manual'
+                : confidence == null
+                ? source
+                : '${(confidence * 100).round()}% estimate';
+
+        return GestureDetector(
+          onTap: () => _showCorrectionDialog(context, meta),
+          child: Container(
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1B1F26),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.primary.withValues(
+                  alpha: meta.isManualDna ? 0.55 : 0.24,
                 ),
               ),
-              if (meta.key != null) ...[
-                const SizedBox(width: 8),
-                Container(width: 1, height: 10, color: Colors.white24),
-                const SizedBox(width: 8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  PhosphorIconsBold.waveform,
+                  size: 14,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 6),
                 Text(
-                  meta.key!,
+                  '${meta.bpm!.round()} BPM',
                   style: const TextStyle(
-                    color: Color(0xFFA68B6C),
+                    color: Color(0xFFE8DCCA),
                     fontSize: 12,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (meta.key != null) ...[
+                  const SizedBox(width: 7),
+                  Container(width: 1, height: 10, color: Colors.white24),
+                  const SizedBox(width: 7),
+                  Text(
+                    meta.key!,
+                    style: const TextStyle(
+                      color: Color(0xFFA68B6C),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 7),
+                Text(
+                  confidenceText,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.46),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
-            ],
+            ),
           ),
         );
       },
     );
+  }
+
+  Future<void> _showCorrectionDialog(
+    BuildContext context,
+    SongMetadata meta,
+  ) async {
+    final bpmController = TextEditingController(
+      text: meta.bpm?.toStringAsFixed(0) ?? '',
+    );
+    final keyController = TextEditingController(text: meta.key ?? '');
+    final result = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: kColorSurface,
+            title: const Text('Correct BPM / Key'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: bpmController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'BPM',
+                    hintText: 'Example: 124',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: keyController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    labelText: 'Key',
+                    hintText: 'Example: 8A, C#m, F',
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+    );
+
+    if (result != true) return;
+    final bpm = double.tryParse(bpmController.text.trim());
+    final key = keyController.text.trim();
+    if (bpm == null && key.isEmpty) return;
+    await DatabaseService.instance.updateSonicDna(
+      widget.songId,
+      bpm: bpm,
+      key: key.isEmpty ? null : key,
+      source: 'manual',
+      confidence: 1.0,
+      manual: true,
+    );
+    if (!mounted || !context.mounted) return;
+    setState(() {
+      _future = DatabaseService.instance.getSongMetadata(widget.songId);
+    });
+    showToast(context, 'BPM/key corrected');
   }
 }

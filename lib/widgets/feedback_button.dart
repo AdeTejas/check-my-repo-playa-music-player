@@ -39,10 +39,9 @@ class _FeedbackButtonState extends State<FeedbackButton>
     _scaleAnimation = Tween<double>(
       begin: 1.0,
       end: widget.scaleFactor,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
-    ));
+    ).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
   }
 
   @override
@@ -89,18 +88,20 @@ class _FeedbackButtonState extends State<FeedbackButton>
       onTapDown: _handleTapDown,
       onTapUp: _handleTapUp,
       onTapCancel: _handleTapCancel,
-      onTap: widget.onPressed != null
-          ? () {
-              _triggerHaptic();
-              widget.onPressed!();
-            }
-          : null,
-      onLongPress: widget.onLongPress != null
-          ? () {
-              _triggerHaptic();
-              widget.onLongPress!();
-            }
-          : null,
+      onTap:
+          widget.onPressed != null
+              ? () {
+                _triggerHaptic();
+                widget.onPressed!();
+              }
+              : null,
+      onLongPress:
+          widget.onLongPress != null
+              ? () {
+                _triggerHaptic();
+                widget.onLongPress!();
+              }
+              : null,
       child: AnimatedBuilder(
         animation: _scaleAnimation,
         builder: (context, child) {
@@ -162,10 +163,7 @@ class FeedbackIconButton extends StatelessWidget {
     );
 
     if (tooltip != null) {
-      return Tooltip(
-        message: tooltip!,
-        child: button,
-      );
+      return Tooltip(message: tooltip!, child: button);
     }
 
     return button;

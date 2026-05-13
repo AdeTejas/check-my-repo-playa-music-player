@@ -109,4 +109,4 @@ For questions or support: [paxpiece@gmail.com]
 
 ---
 
-**Note:** This app stores all data locally on your device. No data is transmitted to external servers.
+**Note:** Playa stores your library data, playlists, bookmarks, ratings, and settings locally on your device. If you use lyrics lookup, the app may send song title, artist, and duration to LRCLIB to find matching lyrics.

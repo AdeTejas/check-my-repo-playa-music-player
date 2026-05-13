@@ -6,6 +6,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 
 import '../services/settings_service.dart';
+import '../services/waveform_cache_service.dart';
 
 class WaveformWidget extends StatefulWidget {
   final String path;
@@ -50,6 +51,7 @@ class _WaveformWidgetState extends State<WaveformWidget> {
     if (oldWidget.path != widget.path) {
       _waveformData = [];
       _cachedPath = null;
+      _isExtracting = false;
       _loadWaveform();
     }
   }
@@ -57,46 +59,11 @@ class _WaveformWidgetState extends State<WaveformWidget> {
   Future<void> _loadWaveform() async {
     if (_waveformData.isNotEmpty || _isExtracting) return;
 
+    final path = widget.path;
     setState(() => _isExtracting = true);
+    final data = await WaveformCacheService.instance.getWaveform(path);
 
-    // Unified Simulation Logic (for consistency across Windows/Android)
-    // We use a simulated "organic" waveform that matches the Rocinante/Expanse aesthetic
-    // better than raw audio data (which can be too spiky/noisy).
-
-    // Simulate song structure: Intro -> Verse -> Chorus -> Bridge -> Chorus -> Outro
-    final rnd = Random(widget.path.hashCode); // Stable random based on path
-    final List<double> data = [];
-
-    // Generate smoother, more "plasma-like" data
-    for (int i = 0; i < 100; i++) {
-      double t = i / 100.0;
-
-      // Base structure (Envelope)
-      double envelope = 1.0;
-      if (t < 0.1) {
-        envelope = t * 10.0; // Fade in
-      } else if (t > 0.9) {
-        envelope = (1.0 - t) * 10.0; // Fade out
-      }
-
-      // Composition of sine waves for organic look
-      double val = 0.3;
-      val += 0.2 * sin(t * 15 + rnd.nextDouble());
-      val += 0.1 * sin(t * 40 + rnd.nextDouble());
-      val += 0.05 * sin(t * 80 + rnd.nextDouble());
-
-      // "Beats" (Engine pulses)
-      if (i % 4 == 0) val += 0.15 * rnd.nextDouble();
-
-      // Chorus sections (Loud)
-      if ((t > 0.3 && t < 0.45) || (t > 0.7 && t < 0.85)) {
-        val *= 1.4;
-      }
-
-      data.add((val * envelope).clamp(0.05, 1.0));
-    }
-
-    if (mounted) {
+    if (mounted && widget.path == path) {
       setState(() {
         _waveformData = data;
         _isExtracting = false;
@@ -205,14 +172,15 @@ class _WaveformWidgetState extends State<WaveformWidget> {
                               widget.path,
                               widget.item,
                             ),
-                            unplayedColor: widget.unplayedColor == Colors.transparent
-                                ? _resolveUnplayedColor(
-                                    widget.playedColor,
-                                    SettingsService.instance.themeMode,
-                                    widget.path,
-                                    widget.item,
-                                  )
-                                : widget.unplayedColor,
+                            unplayedColor:
+                                widget.unplayedColor == Colors.transparent
+                                    ? _resolveUnplayedColor(
+                                      widget.playedColor,
+                                      SettingsService.instance.themeMode,
+                                      widget.path,
+                                      widget.item,
+                                    )
+                                    : widget.unplayedColor,
                             bpm: _extractBpm(widget.item),
                             cachedPath: _cachedPath,
                           ),
@@ -344,9 +312,8 @@ class _WaveformWidgetState extends State<WaveformWidget> {
   Color _neonAccent(Color accent) {
     final hsl = HSLColor.fromColor(accent);
     return hsl
-        .withHue((hsl.hue + 210) % 360)
-        .withSaturation(1.0)
-        .withLightness((hsl.lightness * 0.95).clamp(0.35, 0.75))
+        .withSaturation((hsl.saturation * 1.18).clamp(0.72, 1.0))
+        .withLightness((hsl.lightness * 0.92).clamp(0.24, 0.48))
         .toColor();
   }
 
@@ -431,7 +398,7 @@ class PreciseWaveformPainter extends CustomPainter {
     // Cursor moves naturally at constant speed (progress-based), no beat sync
     final cursorX = (progress * width).clamp(0.0, width);
     final cursorY = centerY;
-    final shipLen = size.height * 0.8; // Reduced from 0.95 (approx 15% smaller)
+    final shipLen = size.height * 0.82;
     // Ensure the tail/nozzle X is clamped so clipping/shaders don't paint the whole canvas
     final rawTail = cursorX - (shipLen * 0.45);
     final tailX = rawTail.clamp(0.0, width);
@@ -560,13 +527,17 @@ class PreciseWaveformPainter extends CustomPainter {
   }) {
     final shipLen = height * 0.8;
     // Epstein-inspired drive: long, collimated, white-hot core with blue ion halo.
-    final flicker = 1.0 + 0.08 * beatStrength + 0.035 * sin(t * 22.0) + 0.02 * cos(t * 41.0);
+    final flicker =
+        1.0 +
+        0.08 * beatStrength +
+        0.035 * sin(t * 22.0) +
+        0.02 * cos(t * 41.0);
     final wobble = 1.0 + 0.045 * sin(t * 9.0) + 0.03 * sin(t * 15.0 + 0.9);
     final oscillation = sin(t * 7.0) * height * (0.02 + 0.008 * beatStrength);
 
-    final plumeLen = shipLen * 2.25 * flicker;
-    final coreHalfWidth = height * 0.11;
-    final haloHalfWidth = height * 0.26;
+    final plumeLen = shipLen * 1.48 * flicker;
+    final coreHalfWidth = height * 0.075;
+    final haloHalfWidth = height * 0.18;
 
     Path buildDrivePlume({
       required double halfWidth,
@@ -599,8 +570,8 @@ class PreciseWaveformPainter extends CustomPainter {
       return p;
     }
 
-    final haloPath = buildDrivePlume(halfWidth: haloHalfWidth, lenScale: 1.18);
-    final corePath = buildDrivePlume(halfWidth: coreHalfWidth, lenScale: 0.98);
+    final haloPath = buildDrivePlume(halfWidth: haloHalfWidth, lenScale: 1.04);
+    final corePath = buildDrivePlume(halfWidth: coreHalfWidth, lenScale: 0.82);
 
     // Nozzle flare
     canvas.drawCircle(
@@ -629,8 +600,8 @@ class PreciseWaveformPainter extends CustomPainter {
           Offset(nozzleX, centerY),
           Offset(nozzleX - plumeLen * 1.25, centerY),
           [
-            Colors.cyan.withValues(alpha: 0.28),
-            baseColor.withValues(alpha: 0.16),
+            Colors.cyan.withValues(alpha: 0.20),
+            baseColor.withValues(alpha: 0.10),
             Colors.blue.withValues(alpha: 0.0),
           ],
           [0.0, 0.55, 1.0],
@@ -648,7 +619,7 @@ class PreciseWaveformPainter extends CustomPainter {
           Offset(nozzleX - plumeLen * 0.95, centerY),
           [
             Colors.white.withValues(alpha: 0.98),
-            Colors.cyanAccent.withValues(alpha: 0.72),
+            Colors.cyanAccent.withValues(alpha: 0.58),
             Colors.blue.withValues(alpha: 0.0),
           ],
           [0.0, 0.26, 1.0],
@@ -693,8 +664,8 @@ class PreciseWaveformPainter extends CustomPainter {
     double beatStrength,
   ) {
     // The Rocinante (Tachi) - Corvette Class
-    final shipLen = height * 0.8; // Reduced from 0.95 (approx 15% smaller)
-    final shipWidth = shipLen * 0.25; // Reduced from 0.35
+    final shipLen = height * 0.8;
+    final shipWidth = shipLen * 0.25;
     final rnd = Random(
       (timeSeconds * 10).floor(),
     ); // Stable random per 100ms (position-driven)
@@ -720,7 +691,9 @@ class PreciseWaveformPainter extends CustomPainter {
     );
 
     // 1. Drive Plume (Epstein Drive) - more collimated + turbulent edges
-    final flicker = 1.0 + 0.12 * beatStrength +
+    final flicker =
+        1.0 +
+        0.12 * beatStrength +
         0.05 * sin(timeSeconds * 22.0) +
         0.03 * cos(timeSeconds * 41.0);
     final wobble =
@@ -854,7 +827,7 @@ class PreciseWaveformPainter extends CustomPainter {
             Offset(shipWidth / 2, 0),
             [
               const Color(0xFF0D0D0D),
-              const Color(0xFF4A4A4A), // Highlight
+              const Color(0xFF4A4A4A),
               const Color(0xFF1A1A1A),
               const Color(0xFF050505),
             ],
@@ -868,7 +841,9 @@ class PreciseWaveformPainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = shipLen * 0.015
-        ..color = accent.withValues(alpha: (0.14 + 0.22 * beatStrength).clamp(0.0, 1.0))
+        ..color = accent.withValues(
+          alpha: (0.14 + 0.22 * beatStrength).clamp(0.0, 1.0),
+        )
         ..blendMode = BlendMode.plus
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0),
     );

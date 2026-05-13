@@ -55,7 +55,9 @@ class BookmarkController extends ChangeNotifier {
       }
 
       final loadTimeMs = TelemetryService.instance.stopTimer('bookmark_load');
-      debugPrint('[BookmarkController] ✓ Loaded ${bookmarks.length} bookmarks in ${loadTimeMs}ms');
+      debugPrint(
+        '[BookmarkController] ✓ Loaded ${bookmarks.length} bookmarks in ${loadTimeMs}ms',
+      );
       AnalyticsService.logEvent('bookmarks_loaded', {
         'track_id': trackId,
         'count': bookmarks.length,
@@ -66,10 +68,11 @@ class BookmarkController extends ChangeNotifier {
     } catch (e, st) {
       LoggerService.instance.warning('Error loading bookmarks', e, st);
       debugPrint('[BookmarkController] ❌ Error loading bookmarks: $e');
-      await AnalyticsService.instance.logException(e, st, context: {
-        'operation': 'loadBookmarks',
-        'track_id': trackId,
-      });
+      await AnalyticsService.instance.logException(
+        e,
+        st,
+        context: {'operation': 'loadBookmarks', 'track_id': trackId},
+      );
       bookmarks.clear();
       notifyListeners();
     }
@@ -130,7 +133,9 @@ class BookmarkController extends ChangeNotifier {
     try {
       bookmarks[index]['note'] = newNote;
       await _save();
-      debugPrint('[BookmarkController] ✓ Bookmark note updated at index $index');
+      debugPrint(
+        '[BookmarkController] ✓ Bookmark note updated at index $index',
+      );
       AnalyticsService.logEvent('bookmark_updated', {'index': index});
       notifyListeners();
     } catch (e, st) {
@@ -150,14 +155,17 @@ class BookmarkController extends ChangeNotifier {
       await _prefs.setStringList(key, encoded);
 
       final saveTimeMs = TelemetryService.instance.stopTimer('bookmark_save');
-      debugPrint('[BookmarkController] ✓ Saved ${encoded.length} bookmarks in ${saveTimeMs}ms');
+      debugPrint(
+        '[BookmarkController] ✓ Saved ${encoded.length} bookmarks in ${saveTimeMs}ms',
+      );
     } catch (e, st) {
       LoggerService.instance.warning('Error saving bookmarks', e, st);
       TelemetryService.instance.stopTimer('bookmark_save');
-      await AnalyticsService.instance.logException(e, st, context: {
-        'operation': '_save',
-        'bookmark_count': bookmarks.length,
-      });
+      await AnalyticsService.instance.logException(
+        e,
+        st,
+        context: {'operation': '_save', 'bookmark_count': bookmarks.length},
+      );
     }
   }
 

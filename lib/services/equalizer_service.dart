@@ -80,7 +80,10 @@ class EqualizerService {
   static Future<void> setBandLevel(int band, int level) async {
     if (!Platform.isAndroid) return;
     try {
-      await _channel.invokeMethod('setBandLevel', {'band': band, 'level': level});
+      await _channel.invokeMethod('setBandLevel', {
+        'band': band,
+        'level': level,
+      });
     } on MissingPluginException {
       return;
     } on PlatformException {

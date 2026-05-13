@@ -13,7 +13,8 @@ class LoggerService {
   void init() {
     Logger.root.level = Level.ALL;
     Logger.root.onRecord.listen((record) {
-      final message = '[${record.level.name}] ${record.loggerName}: ${record.message}';
+      final message =
+          '[${record.level.name}] ${record.loggerName}: ${record.message}';
       if (record.error != null) {
         debugPrint('$message\n${record.error}');
       } else {

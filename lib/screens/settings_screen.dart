@@ -41,7 +41,7 @@ class SettingsScreen extends StatelessWidget {
         builder: (context, _) {
           final settings = SettingsService.instance;
           return ListView(
-            padding: kPadScreen,
+            padding: const EdgeInsets.fromLTRB(kSp, kSp, kSp, kSp * 3),
             children: [
               _buildSectionHeader('Sonic DNA'),
               Padding(
@@ -62,7 +62,7 @@ class SettingsScreen extends StatelessWidget {
                         style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                       subtitle: Text(
-                        'Detect BPM and Key for all songs',
+                        'Read BPM/key tags; estimate missing values on Android',
                         style: TextStyle(
                           fontSize: kTextXs,
                           color: kColorOn.withValues(alpha: 0.6),
@@ -297,9 +297,15 @@ class SettingsScreen extends StatelessWidget {
                         dropdownColor: Theme.of(context).cardColor,
                         underline: const SizedBox(),
                         items: const [
-                          DropdownMenuItem(value: 'pause', child: Text('Pause')),
+                          DropdownMenuItem(
+                            value: 'pause',
+                            child: Text('Pause'),
+                          ),
                           DropdownMenuItem(value: 'duck', child: Text('Duck')),
-                          DropdownMenuItem(value: 'none', child: Text('Ignore')),
+                          DropdownMenuItem(
+                            value: 'none',
+                            child: Text('Ignore'),
+                          ),
                         ],
                         onChanged: (v) {
                           if (v != null) settings.setAudioFocusMode(v);
@@ -333,25 +339,6 @@ class SettingsScreen extends StatelessWidget {
                         : settings.setScreensaverEnabled,
                 icon: PhosphorIconsBold.toggleRight,
               ),
-              _buildSwitchTile(
-                context: context,
-                title: 'High Quality Blur',
-                subtitle: 'Enable glassmorphism effects',
-                value: settings.highQualityBlur,
-                onChanged:
-                    settings.batterySaver ? null : settings.setHighQualityBlur,
-                icon: PhosphorIconsBold.drop,
-              ),
-              _buildSwitchTile(
-                context: context,
-                title: 'Show Waveforms',
-                subtitle: 'Display audio visualization',
-                value: settings.showWaveforms,
-                onChanged:
-                    settings.batterySaver ? null : settings.setShowWaveforms,
-                icon: PhosphorIconsBold.waves,
-              ),
-
               const SizedBox(height: kSp),
               const Padding(
                 padding: EdgeInsets.only(left: kSp, bottom: kSp),
@@ -360,7 +347,7 @@ class SettingsScreen extends StatelessWidget {
                   style: TextStyle(fontSize: kTextXs, color: kColorOn2),
                 ),
               ),
-              _buildThemeModeSelector(settings),
+              _buildThemeModeSelector(context, settings),
               const SizedBox(height: kSp * 1.5),
               const Padding(
                 padding: EdgeInsets.only(left: kSp, bottom: kSp),
@@ -370,6 +357,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
               _buildColorPicker(settings),
+              _buildThemePreview(context, settings),
               const SizedBox(height: kSp * 2),
 
               _buildSectionHeader('Library'),
@@ -817,7 +805,7 @@ class SettingsScreen extends StatelessWidget {
 
   Widget _buildSectionHeader(String title) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: kSp, left: kSp),
+      padding: const EdgeInsets.only(top: 4, bottom: 6, left: 4),
       child: Text(
         title.toUpperCase(),
         style: const TextStyle(
@@ -840,13 +828,16 @@ class SettingsScreen extends StatelessWidget {
   }) {
     final accentColor = Theme.of(context).colorScheme.primary;
     return Padding(
-      padding: const EdgeInsets.only(bottom: kSp),
+      padding: const EdgeInsets.only(bottom: 6),
       child: GlassPanel(
         borderRadius: BorderRadius.circular(kRadius),
         borderColor: Colors.white.withValues(alpha: 0.15),
         child: Material(
           color: Colors.transparent,
           child: SwitchListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
             title: Text(
               title,
               style: const TextStyle(fontWeight: FontWeight.w600),
@@ -860,7 +851,11 @@ class SettingsScreen extends StatelessWidget {
             ),
             value: value,
             onChanged: onChanged,
-            secondary: Icon(icon, color: kColorOn, size: kIconMd),
+            secondary: Icon(
+              icon,
+              color: value ? accentColor : kColorOn,
+              size: 20,
+            ),
             activeThumbColor: accentColor,
             activeTrackColor: accentColor.withValues(alpha: 0.30),
           ),
@@ -869,8 +864,11 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildThemeModeSelector(SettingsService settings) {
-    final accentColor = Color(settings.accentColor);
+  Widget _buildThemeModeSelector(
+    BuildContext context,
+    SettingsService settings,
+  ) {
+    final accentColor = Theme.of(context).colorScheme.primary;
 
     final modes = [
       {
@@ -894,60 +892,175 @@ class SettingsScreen extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: kSp * 1.5),
       child: Wrap(
         spacing: kSp,
-        children: modes.map((mode) {
-          final value = mode['value'] as String;
-          final selected = settings.themeMode == value;
-          return ChoiceChip(
-            label: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  mode['icon'] as IconData,
-                  size: 16,
-                  color: selected ? Colors.white : kColorOn2,
+        children:
+            modes.map((mode) {
+              final value = mode['value'] as String;
+              final selected = settings.themeMode == value;
+              return ChoiceChip(
+                label: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      mode['icon'] as IconData,
+                      size: 16,
+                      color: selected ? Colors.white : kColorOn2,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      value == SettingsService.themeAlbumArt
+                          ? 'Album Art'
+                          : (value == SettingsService.themeNeon
+                              ? 'Neon'
+                              : 'Classic'),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 6),
-                Text(value == SettingsService.themeAlbumArt
-                    ? 'Album Art'
-                    : (value == SettingsService.themeNeon ? 'Neon' : 'Classic')),
+                selected: selected,
+                onSelected:
+                    selected ? null : (_) => settings.setThemeMode(value),
+                selectedColor: accentColor.withValues(alpha: 0.24),
+                backgroundColor: Colors.white12,
+                labelStyle: TextStyle(
+                  color: selected ? Colors.white : kColorOn2,
+                  fontWeight: FontWeight.w600,
+                ),
+                side: BorderSide(
+                  color: selected ? accentColor : Colors.white24,
+                ),
+              );
+            }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildThemePreview(BuildContext context, SettingsService settings) {
+    final accent = Theme.of(context).colorScheme.primary;
+    final modeLabel = switch (settings.themeMode) {
+      SettingsService.themeNeon => 'Deep glow',
+      SettingsService.themeAlbumArt => 'Adaptive',
+      _ => 'Matte',
+    };
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(kSp, kSp, kSp, 0),
+      child: GlassPanel(
+        borderRadius: BorderRadius.circular(kRadius),
+        borderColor: accent.withValues(alpha: 0.28),
+        child: Container(
+          height: 104,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(kRadius),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFF07090E),
+                Color.lerp(const Color(0xFF11131B), accent, 0.18)!,
+                const Color(0xFF030406),
               ],
             ),
-            selected: selected,
-            onSelected: selected
-                ? null
-                : (_) => settings.setThemeMode(value),
-            selectedColor: accentColor.withValues(alpha: 0.24),
-            backgroundColor: Colors.white12,
-            labelStyle: TextStyle(
-              color: selected ? Colors.white : kColorOn2,
-              fontWeight: FontWeight.w600,
-            ),
-            side: BorderSide(
-              color: selected ? accentColor : Colors.white24,
-            ),
-          );
-        }).toList(),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 66,
+                height: 66,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF090A0D),
+                  border: Border.all(color: accent.withValues(alpha: 0.7)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.22),
+                      blurRadius: 18,
+                      spreadRadius: -4,
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: accent,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      modeLabel,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: kColorOn,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: 0.68,
+                        minHeight: 5,
+                        backgroundColor: Colors.white10,
+                        color: accent,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        _previewPill(accent, filled: true),
+                        const SizedBox(width: 8),
+                        _previewPill(accent, filled: false),
+                        const SizedBox(width: 8),
+                        _previewPill(accent, filled: false, short: true),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _previewPill(
+    Color accent, {
+    required bool filled,
+    bool short = false,
+  }) {
+    return Container(
+      width: short ? 34 : 50,
+      height: 18,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(9),
+        color: filled ? accent.withValues(alpha: 0.32) : Colors.white10,
+        border: Border.all(
+          color: filled ? accent.withValues(alpha: 0.8) : Colors.white12,
+        ),
       ),
     );
   }
 
   Widget _buildColorPicker(SettingsService settings) {
-    final colors = [
-      0xFF00E5FF, // Coruscant-inspired (cyan metallic)
-      0xFF8D5524, // Wood (Classic)
-      0xFFFFB300, // Amber
-      0xFFD50000, // Crimson
-      0xFF00C853, // Emerald
-      0xFF6200EA, // Purple
-    ];
+    final colors = SettingsService.colorPresets.values.toList();
 
     return SizedBox(
-      height: 50,
+      height: 42,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: kSp),
         itemCount: colors.length,
-        separatorBuilder: (_, __) => const SizedBox(width: kSp * 2),
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
           final color = Color(colors[index]);
           final isSelected = settings.accentColor == colors[index];
@@ -955,8 +1068,8 @@ class SettingsScreen extends StatelessWidget {
           return GestureDetector(
             onTap: () => settings.setAccentColor(colors[index]),
             child: Container(
-              width: 40,
-              height: 40,
+              width: 34,
+              height: 34,
               decoration: BoxDecoration(
                 color: color,
                 shape: BoxShape.circle,
@@ -969,8 +1082,8 @@ class SettingsScreen extends StatelessWidget {
                         ? [
                           BoxShadow(
                             color: color.withValues(alpha: 0.5),
-                            blurRadius: 8,
-                            spreadRadius: 2,
+                            blurRadius: 10,
+                            spreadRadius: 1,
                           ),
                         ]
                         : null,
@@ -1055,7 +1168,7 @@ class _AnalysisDialogState extends State<_AnalysisDialog> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'BPM/Key extracted when available in file tags.',
+                      'BPM/key saved from tags or Android audio estimates.',
                       style: TextStyle(color: Colors.white54, fontSize: 12),
                       textAlign: TextAlign.center,
                     ),
@@ -1101,7 +1214,7 @@ class _AnalysisDialogState extends State<_AnalysisDialog> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Extracting BPM/Key from audio tags...',
+                    'Reading tags and estimating missing audio data...',
                     style: TextStyle(color: Colors.white54, fontSize: 12),
                     textAlign: TextAlign.center,
                   ),

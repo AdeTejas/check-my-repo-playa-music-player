@@ -5,12 +5,12 @@
 ## Introduction
 Playa ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, and safeguard your information when you use our music player app ("App").
 
-## Information We Collect
-### Local Data Only
-- **Song Metadata:** Ratings, play counts, lyrics, and BPM/key data you add to songs
+## Information We Process
+### Local App Data
+- **Song Metadata:** Ratings, play counts, cached lyrics, and BPM/key data you add to songs
 - **Playlists:** User-created playlists and smart playlists
 - **Settings:** App preferences (battery saver, themes, etc.)
-- **Usage Data:** Anonymous play statistics for smart playlists
+- **Usage Data:** Play statistics used locally for smart playlists
 
 ### Permissions
 The App requests the following permissions:
@@ -18,7 +18,10 @@ The App requests the following permissions:
 - **Audio:** For playback and equalizer control (Android only)
 - **Notifications:** For background playback controls
 
-All data is stored locally on your device. We do not collect, transmit, or store any personal information on external servers.
+Most app data is stored locally on your device. The App does not run its own server, account system, advertising SDK, or analytics backend.
+
+### Lyrics Lookup
+When you use the lyrics feature, the App may send the song artist, song title, and track duration to LRCLIB (`lrclib.net`) to search for matching lyrics. Returned lyrics may be cached locally on your device.
 
 ## How We Use Information
 - Provide music playback functionality
@@ -27,15 +30,16 @@ All data is stored locally on your device. We do not collect, transmit, or store
 - Respect battery saver settings
 
 ## Data Sharing
-We do not share, sell, or transmit any user data to third parties. All data remains on your device.
+We do not sell user data. We do not transmit your local music files, playlists, ratings, bookmarks, or settings to our servers. Lyrics lookup requests are sent to LRCLIB only when needed to provide lyrics.
 
 ## Third-Party Services
 The App uses:
 - **OnAudioQuery:** For accessing local music library
 - **Just Audio:** For audio playback
 - **Sqflite:** For local database storage
+- **LRCLIB:** For optional online lyrics lookup
 
-These services operate locally and do not transmit data.
+OnAudioQuery, Just Audio, and Sqflite operate locally in the App. LRCLIB receives lyrics lookup query details as described above.
 
 ## Your Rights
 - Delete all app data by uninstalling the app
@@ -46,6 +50,4 @@ These services operate locally and do not transmit data.
 For privacy concerns, contact us at [paxpiece@gmail.com]
 
 ## Changes to This Policy
-We may update this policy. Check the App for the latest version.
-
-This policy was generated using iubenda's free privacy policy generator template.
+We may update this policy. Check the App or store listing for the latest version.

@@ -328,18 +328,21 @@ class _TurntableDeckState extends State<TurntableDeck>
     // Prevent the generated label from becoming too light when accent is bright.
     final labelBaseLight = min(hsl.lightness, 0.65);
     final labelBaseSat = hsl.saturation;
-    final bg = hsl
-      .withSaturation((labelBaseSat * 0.18).clamp(0.0, 1.0))
-      .withLightness((labelBaseLight * 0.80).clamp(0.0, 1.0))
-      .toColor();
-    final ring1 = hsl
-      .withSaturation((labelBaseSat * 0.28).clamp(0.0, 1.0))
-      .withLightness((labelBaseLight * 0.62).clamp(0.0, 1.0))
-      .toColor();
-    final ring2 = hsl
-      .withSaturation((labelBaseSat * 0.22).clamp(0.0, 1.0))
-      .withLightness((labelBaseLight * 0.52).clamp(0.0, 1.0))
-      .toColor();
+    final bg =
+        hsl
+            .withSaturation((labelBaseSat * 0.18).clamp(0.0, 1.0))
+            .withLightness((labelBaseLight * 0.80).clamp(0.0, 1.0))
+            .toColor();
+    final ring1 =
+        hsl
+            .withSaturation((labelBaseSat * 0.28).clamp(0.0, 1.0))
+            .withLightness((labelBaseLight * 0.62).clamp(0.0, 1.0))
+            .toColor();
+    final ring2 =
+        hsl
+            .withSaturation((labelBaseSat * 0.22).clamp(0.0, 1.0))
+            .withLightness((labelBaseLight * 0.52).clamp(0.0, 1.0))
+            .toColor();
 
     c.drawCircle(center, r, Paint()..color = bg);
 
@@ -1080,13 +1083,16 @@ class _TurntableDeckState extends State<TurntableDeck>
     if (mode == SettingsService.themeNeon) {
       final hsl = HSLColor.fromColor(accent);
       return hsl
-          .withHue((hsl.hue + 210) % 360)
-          .withSaturation(1.0)
-          .withLightness((hsl.lightness * 0.95).clamp(0.35, 0.75))
+          .withSaturation((hsl.saturation * 1.18).clamp(0.72, 1.0))
+          .withLightness((hsl.lightness * 0.92).clamp(0.24, 0.48))
           .toColor();
     }
     if (mode == SettingsService.themeAlbumArt) {
-      final key = widget.item?.id ?? widget.item?.title ?? widget.item?.artUri?.toString() ?? accent.toString();
+      final key =
+          widget.item?.id ??
+          widget.item?.title ??
+          widget.item?.artUri?.toString() ??
+          accent.toString();
       final rnd = Random(key.hashCode);
       return HSLColor.fromAHSL(
         1.0,
@@ -1101,8 +1107,8 @@ class _TurntableDeckState extends State<TurntableDeck>
   Color _neutralizeTurntableAccent(Color accent) {
     final hsl = HSLColor.fromColor(accent);
     return hsl
-        .withSaturation((hsl.saturation * 0.28).clamp(0.0, 1.0))
-        .withLightness((hsl.lightness * 0.74 + 0.16).clamp(0.0, 1.0))
+        .withSaturation((hsl.saturation * 0.78).clamp(0.24, 0.86))
+        .withLightness((hsl.lightness * 0.45 + 0.10).clamp(0.13, 0.34))
         .toColor();
   }
 
@@ -1140,7 +1146,8 @@ class _TurntableDeckState extends State<TurntableDeck>
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final size = min(constraints.maxWidth, constraints.maxHeight) * 1.0;
+        final size = min(constraints.maxWidth, constraints.maxHeight);
+        final visualScale = constraints.maxHeight < 320 ? 1.30 : 1.37;
 
         if (perfTier == 2) {
           _ensureDustTexture(
@@ -1150,102 +1157,107 @@ class _TurntableDeckState extends State<TurntableDeck>
         }
 
         return Center(
-          child: GestureDetector(
-            onPanStart: _handlePanStart,
-            onPanUpdate: _handlePanUpdate,
-            onPanEnd: _handlePanEnd,
-            onTapUp: _handleTapUp,
-            onDoubleTapDown: _handleDoubleTapDown,
-            child: SizedBox(
-              width: size,
-              height: size,
-              child: Stack(
-                children: [
-                  // 1. Static Base (Cached)
-                  RepaintBoundary(
-                    child: CustomPaint(
-                      size: Size(size, size),
-                      painter: _TurntableBasePainter(
-                        strobeEnabled: _strobeEnabled,
-                        strobeColor: trackColor,
-                        accentColor: accentColor,
+          child: Transform.scale(
+            scale: visualScale,
+            child: GestureDetector(
+              onPanStart: _handlePanStart,
+              onPanUpdate: _handlePanUpdate,
+              onPanEnd: _handlePanEnd,
+              onTapUp: _handleTapUp,
+              onDoubleTapDown: _handleDoubleTapDown,
+              child: SizedBox(
+                width: size,
+                height: size,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    // 1. Static Base (Cached)
+                    RepaintBoundary(
+                      child: CustomPaint(
+                        size: Size(size, size),
+                        painter: _TurntableBasePainter(
+                          strobeEnabled: _strobeEnabled,
+                          strobeColor: trackColor,
+                          accentColor: accentColor,
+                        ),
+                        isComplex: true,
                       ),
-                      isComplex: true,
                     ),
-                  ),
-                  // 1.5 High Tech Speaker
-                  Positioned(
-                    left: size * 0.69,
-                    top: size * 0.69,
-                    width: size * 0.24,
-                    height: size * 0.24,
-                    child: StreamBuilder<bool>(
-                      stream: player.playingStream,
-                      builder: (context, snapshot) {
-                        final isPlaying = snapshot.data ?? false;
-                        return StreamBuilder<double>(
-                          stream: player.volumeStream,
-                          builder: (context, volSnap) {
-                            final volume = volSnap.data ?? 1.0;
-                            return StreamBuilder<Duration>(
-                              stream: player.positionStream,
-                              builder: (context, posSnap) {
-                                return HighTechSpeaker(
-                                  isPlaying: isPlaying,
-                                  bpm: _currentBpm,
-                                  position: posSnap.data ?? player.position,
-                                  volume: volume,
-                                  accentColor: accentColor,
-                                );
-                              },
-                            );
-                          },
-                        );
-                      },
+                    // 1.5 High Tech Speaker
+                    Positioned(
+                      left: size * 0.69,
+                      top: size * 0.69,
+                      width: size * 0.24,
+                      height: size * 0.24,
+                      child: StreamBuilder<bool>(
+                        stream: player.playingStream,
+                        builder: (context, snapshot) {
+                          final isPlaying = snapshot.data ?? false;
+                          return StreamBuilder<double>(
+                            stream: player.volumeStream,
+                            builder: (context, volSnap) {
+                              final volume = volSnap.data ?? 1.0;
+                              return StreamBuilder<Duration>(
+                                stream: player.positionStream,
+                                builder: (context, posSnap) {
+                                  return HighTechSpeaker(
+                                    isPlaying: isPlaying,
+                                    bpm: _currentBpm,
+                                    position: posSnap.data ?? player.position,
+                                    volume: volume,
+                                    accentColor: accentColor,
+                                  );
+                                },
+                              );
+                            },
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                  // 2. Dynamic Spinner (Animated)
-                  RepaintBoundary(
-                    child: StreamBuilder<Duration>(
-                      stream: player.positionStream,
-                      builder: (context, posSnap) {
-                        final pos =
-                            _dragPosition ?? posSnap.data ?? Duration.zero;
-                        final dur =
-                            player.duration ?? const Duration(milliseconds: 1);
-                        final progress =
-                            dur.inMilliseconds == 0
-                                ? 0.0
-                                : pos.inMilliseconds / dur.inMilliseconds;
+                    // 2. Dynamic Spinner (Animated)
+                    RepaintBoundary(
+                      child: StreamBuilder<Duration>(
+                        stream: player.positionStream,
+                        builder: (context, posSnap) {
+                          final pos =
+                              _dragPosition ?? posSnap.data ?? Duration.zero;
+                          final dur =
+                              player.duration ??
+                              const Duration(milliseconds: 1);
+                          final progress =
+                              dur.inMilliseconds == 0
+                                  ? 0.0
+                                  : pos.inMilliseconds / dur.inMilliseconds;
 
-                        return CustomPaint(
-                          size: Size(size, size),
-                          painter: _TurntableSpinnerPainter(
-                            progress: progress.clamp(0.0, 1.0),
-                            discAngle: _discAngle,
-                            velocity: _angularVelocity,
-                            strobeColor: trackColor,
-                            knobAngle: (_pitchValue - 1.0) * 5.0,
-                            labelImage: _labelImage ?? _generatedLabelImage,
-                            strobeEnabled: _strobeEnabled,
-                            is33RPM: _is33RPM,
-                            isPlaying: player.playing,
-                            lowPerformanceMode: settings.lowPerformanceMode,
-                            accentColor: accentColor,
-                            tonearmPulse: _tonearmPulse,
-                            groovePulse: _groovePulse,
-                            beatPulse: _beatPulse,
-                            cueLift: _cueLift,
-                            armProgressOverride: _armProgressOverride,
-                            perfTier: perfTier,
-                            dustImage: perfTier == 2 ? _dustImage : null,
-                          ),
-                          willChange: true,
-                        );
-                      },
+                          return CustomPaint(
+                            size: Size(size, size),
+                            painter: _TurntableSpinnerPainter(
+                              progress: progress.clamp(0.0, 1.0),
+                              discAngle: _discAngle,
+                              velocity: _angularVelocity,
+                              strobeColor: trackColor,
+                              knobAngle: (_pitchValue - 1.0) * 5.0,
+                              labelImage: _labelImage ?? _generatedLabelImage,
+                              strobeEnabled: _strobeEnabled,
+                              is33RPM: _is33RPM,
+                              isPlaying: player.playing,
+                              lowPerformanceMode: settings.lowPerformanceMode,
+                              accentColor: accentColor,
+                              tonearmPulse: _tonearmPulse,
+                              groovePulse: _groovePulse,
+                              beatPulse: _beatPulse,
+                              cueLift: _cueLift,
+                              armProgressOverride: _armProgressOverride,
+                              perfTier: perfTier,
+                              dustImage: perfTier == 2 ? _dustImage : null,
+                            ),
+                            willChange: true,
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -1294,6 +1306,13 @@ class _TurntableBasePainter extends CustomPainter {
       Radius.circular(w * 0.04),
     );
 
+    canvas.drawRRect(
+      plinthRRect.shift(Offset(0, w * 0.018)),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.38)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.018),
+    );
+
     // Layout Constants - REFINED SCALES
     final platterRadius = w * 0.33;
     final platterCenter = Offset(
@@ -1301,11 +1320,18 @@ class _TurntableBasePainter extends CustomPainter {
       h * 0.45,
     ); // Slightly up-left to make room
 
-    // Accent-driven "metallic paint" (Coruscant-inspired): deep base + brighter edge + subtle flake.
-    // Fixed colors to avoid magenta glow
-    final c1 = const Color(0xFF2A2A2A);
-    final c2 = const Color(0xFF1A1A1A);
-    final c3 = const Color(0xFF0F0F0F);
+    final accentHsl = HSLColor.fromColor(accentColor);
+    final c1 =
+        accentHsl
+            .withSaturation((accentHsl.saturation * 0.82).clamp(0.0, 0.86))
+            .withLightness((accentHsl.lightness * 0.55).clamp(0.10, 0.28))
+            .toColor();
+    final c2 =
+        accentHsl
+            .withSaturation((accentHsl.saturation * 0.66).clamp(0.0, 0.72))
+            .withLightness((accentHsl.lightness * 0.34).clamp(0.06, 0.18))
+            .toColor();
+    final c3 = const Color(0xFF050608);
 
     final plinthPaint =
         Paint()
@@ -1316,6 +1342,27 @@ class _TurntableBasePainter extends CustomPainter {
             [0.0, 0.6, 1.0],
           );
     canvas.drawRRect(plinthRRect, plinthPaint);
+
+    canvas.drawRRect(
+      plinthRRect.deflate(w * 0.006),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = w * 0.003
+        ..shader = ui.Gradient.linear(
+          plinthRect.topLeft,
+          plinthRect.bottomRight,
+          [
+            Color.lerp(
+              Colors.white,
+              accentColor,
+              0.28,
+            )!.withValues(alpha: 0.16),
+            Colors.transparent,
+            Colors.black.withValues(alpha: 0.24),
+          ],
+          [0.0, 0.48, 1.0],
+        ),
+    );
 
     // Clearcoat edge highlight (reads more premium on desktop).
     if (isWindows) {
@@ -1362,14 +1409,18 @@ class _TurntableBasePainter extends CustomPainter {
     }
     canvas.restore();
 
-    // Metallic flake (lightweight): stable speckle so it doesn't shimmer.
+    // Matte mineral grain: stable speckle so the plinth reads textured, not glossy.
     canvas.save();
     canvas.clipRRect(plinthRRect);
     final flakeRand = Random(4242);
-    final flakeCount = isWindows ? 2400 : 900;
+    final flakeCount = isWindows ? 2200 : 760;
     for (int i = 0; i < flakeCount; i++) {
       final t = flakeRand.nextDouble();
-      final flakeColor = Colors.white.withValues(alpha: 0.04 + (t * 0.05));
+      final flakeColor = Color.lerp(
+        Colors.white,
+        accentColor,
+        t,
+      )!.withValues(alpha: 0.020 + (t * 0.030));
       canvas.drawCircle(
         Offset(flakeRand.nextDouble() * w, flakeRand.nextDouble() * h),
         (isWindows ? 0.28 : 0.4) +
@@ -1377,6 +1428,19 @@ class _TurntableBasePainter extends CustomPainter {
         Paint()..color = flakeColor,
       );
     }
+    canvas.drawRRect(
+      plinthRRect,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.13)
+        ..blendMode = BlendMode.multiply,
+    );
+    canvas.drawRRect(
+      plinthRRect.deflate(w * 0.012),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = w * 0.002
+        ..color = Colors.white.withValues(alpha: 0.035),
+    );
     canvas.restore();
 
     // 2. SPEAKER GRILL (Bottom Right)
@@ -1702,6 +1766,20 @@ class _TurntableSpinnerPainter extends CustomPainter {
     final matR = platterRadius * 0.93;
     final recordR = platterRadius * 0.90;
 
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: platterCenter.translate(0, w * 0.020),
+        width: recordR * 2.06,
+        height: recordR * 0.34,
+      ),
+      Paint()
+        ..color = Colors.black.withValues(alpha: full ? 0.32 : 0.22)
+        ..maskFilter =
+            full
+                ? MaskFilter.blur(BlurStyle.normal, w * 0.020 * blurMul)
+                : null,
+    );
+
     // Platter (dark metal) with subtle depth.
     canvas.drawCircle(
       platterCenter,
@@ -1800,8 +1878,10 @@ class _TurntableSpinnerPainter extends CustomPainter {
       final grooveRange = recordR * 0.95 - recordR * 0.35;
       final grooveStep = hq ? 1.25 : 2.0;
       final grooveSteps = (grooveRange / grooveStep).floor();
+      final detailRand = Random(7331);
       for (int i = 0; i < grooveSteps; i++) {
         final r = recordR * 0.35 + i * grooveStep;
+        final wobble = hq ? detailRand.nextDouble() * 0.004 : 0.0;
         final grooveAlpha =
             (hq ? 0.013 : 0.02) +
             groovePulse * (hq ? 0.04 : 0.05) * (1 - i / max(1, grooveSteps));
@@ -1812,8 +1892,21 @@ class _TurntableSpinnerPainter extends CustomPainter {
           r,
           Paint()
             ..style = PaintingStyle.stroke
-            ..strokeWidth = grooveWidth
-            ..color = Colors.white.withValues(alpha: grooveAlpha * 0.55),
+            ..strokeWidth = grooveWidth + wobble
+            ..color = Colors.white.withValues(alpha: grooveAlpha * 0.62),
+        );
+      }
+
+      for (int i = 0; i < 18; i++) {
+        final r = recordR * (0.39 + i * 0.029);
+        final alpha = 0.012 + (i.isEven ? 0.006 : 0.0);
+        canvas.drawCircle(
+          platterCenter,
+          r,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = w * 0.00075
+            ..color = Colors.black.withValues(alpha: alpha),
         );
       }
     }
@@ -1882,6 +1975,16 @@ class _TurntableSpinnerPainter extends CustomPainter {
             .withLightness((labelHsl.lightness * 0.88).clamp(0.0, 1.0))
             .withSaturation((labelHsl.saturation * 0.20).clamp(0.0, 1.0))
             .toColor();
+    canvas.drawCircle(
+      platterCenter.translate(0, w * 0.002),
+      labelR * 1.02,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.26)
+        ..maskFilter =
+            full
+                ? MaskFilter.blur(BlurStyle.normal, w * 0.004 * blurMul)
+                : null,
+    );
     canvas.drawCircle(platterCenter, labelR, Paint()..color = labelColor);
 
     // Light label highlight (subtle; avoid a second strong reflection)
@@ -1965,6 +2068,36 @@ class _TurntableSpinnerPainter extends CustomPainter {
     );
 
     canvas.restore(); // Restore from spinning rotation
+
+    if (full && !lowPerformanceMode) {
+      final farFocusArc = Rect.fromCircle(
+        center: platterCenter,
+        radius: recordR,
+      );
+      canvas.drawArc(
+        farFocusArc,
+        pi * 1.08,
+        pi * 0.84,
+        false,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = w * 0.018
+          ..strokeCap = StrokeCap.round
+          ..color = Colors.black.withValues(alpha: 0.16)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.010 * blurMul),
+      );
+      canvas.drawArc(
+        farFocusArc.deflate(w * 0.004),
+        pi * 0.18,
+        pi * 0.68,
+        false,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = w * 0.004
+          ..strokeCap = StrokeCap.round
+          ..color = Colors.white.withValues(alpha: 0.10),
+      );
+    }
 
     // Single, restrained world-space highlight (avoids multiple competing glints).
     if (minimal && !lowPerformanceMode) {
@@ -2144,8 +2277,8 @@ class _TurntableSpinnerPainter extends CustomPainter {
     if (intensity > 0.01) {
       final glowColor =
           Color.lerp(
-            const Color(0xFF003300),
-            const Color(0xFF00FF00),
+            const Color(0xFF003A16),
+            const Color(0xFF00D45A),
             intensity,
           )!;
 

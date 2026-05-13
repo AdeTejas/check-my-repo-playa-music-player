@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:just_audio_background/just_audio_background.dart';
+import 'package:on_audio_query/on_audio_query.dart' as oaq;
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+
 import '../services/player_controller.dart';
 import '../ui/tokens.dart';
+import 'artwork_image.dart';
 
 class MiniPlayer extends StatelessWidget {
   final PlayerController ctrl;
@@ -28,57 +31,65 @@ class MiniPlayer extends StatelessWidget {
           builder: (context, playerSnapshot) {
             final playerState = playerSnapshot.data;
             final isPlaying = playerState?.playing ?? false;
-            final processingState = playerState?.processingState ?? ProcessingState.idle;
+            final processingState =
+                playerState?.processingState ?? ProcessingState.idle;
+            final songId = mediaItem.extras?['songId'];
+            final artworkId = songId is int ? songId : int.tryParse('$songId');
 
-            return GestureDetector(
-              onTap: onTap,
-              child: Container(
-                height: 64,
-                margin: const EdgeInsets.symmetric(horizontal: kSp, vertical: kSp / 2),
-                decoration: BoxDecoration(
-                  color: kColorSurface.withValues(alpha: 0.95),
-                  borderRadius: BorderRadius.circular(kRadius),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.1),
-                    width: 1,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+            return Padding(
+              padding: const EdgeInsets.only(bottom: kSp),
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(18),
+                child: Container(
+                  height: 68,
+                  decoration: BoxDecoration(
+                    color: kColorSurface.withValues(alpha: 0.88),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      width: 1,
                     ),
-                  ],
-                ),
-                child: Material(
-                  color: Colors.transparent,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.24),
+                        blurRadius: 16,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
                   child: Row(
                     children: [
-                      // Album art
                       Container(
                         width: 48,
                         height: 48,
                         margin: const EdgeInsets.all(kSp),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(kRadius / 2),
-                          image: mediaItem.artUri != null
-                              ? DecorationImage(
-                                  image: NetworkImage(mediaItem.artUri.toString()),
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
                           color: kColorSurface,
                         ),
-                        child: mediaItem.artUri == null
-                            ? Icon(
-                                PhosphorIconsBold.musicNote,
-                                color: kColorOn.withValues(alpha: 0.5),
-                                size: 24,
-                              )
-                            : null,
+                        clipBehavior: Clip.antiAlias,
+                        child:
+                            artworkId == null
+                                ? Icon(
+                                  PhosphorIconsBold.musicNote,
+                                  color: kColorOn.withValues(alpha: 0.5),
+                                  size: 24,
+                                )
+                                : ArtworkImage(
+                                  id: artworkId,
+                                  type: oaq.ArtworkType.AUDIO,
+                                  artworkFit: BoxFit.cover,
+                                  artworkBorder: BorderRadius.circular(
+                                    kRadius / 2,
+                                  ),
+                                  nullArtworkWidget: Icon(
+                                    PhosphorIconsBold.musicNote,
+                                    color: kColorOn.withValues(alpha: 0.5),
+                                    size: 24,
+                                  ),
+                                ),
                       ),
-
-                      // Track info
                       Expanded(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -86,91 +97,57 @@ class MiniPlayer extends StatelessWidget {
                           children: [
                             Text(
                               mediaItem.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 fontSize: kTextSm,
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w700,
                                 color: kColorOn,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                             ),
+                            const SizedBox(height: 2),
                             Text(
                               mediaItem.artist ?? 'Unknown Artist',
-                              style: TextStyle(
-                                fontSize: kTextXs,
-                                color: kColorOn.withValues(alpha: 0.7),
-                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: kTextXs,
+                                color: kColorOn.withValues(alpha: 0.68),
+                              ),
                             ),
                           ],
                         ),
                       ),
-
-                      // Controls
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(
-                              PhosphorIconsBold.skipBack,
-                              color: kColorOn,
-                              size: 20,
-                            ),
-                            onPressed: ctrl.isReady ? ctrl.player.seekToPrevious : null,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(
-                              minWidth: 40,
-                              minHeight: 40,
-                            ),
-                          ),
-                          IconButton(
-                            icon: Icon(
-                              isPlaying && processingState != ProcessingState.buffering
-                                  ? PhosphorIconsBold.pause
-                                  : PhosphorIconsBold.play,
-                              color: kColorOn,
-                              size: 24,
-                            ),
-                            onPressed: ctrl.isReady
-                                ? () => isPlaying ? ctrl.pause() : ctrl.play()
-                                : null,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(
-                              minWidth: 48,
-                              minHeight: 48,
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              PhosphorIconsBold.skipForward,
-                              color: kColorOn,
-                              size: 20,
-                            ),
-                            onPressed: ctrl.isReady ? ctrl.player.seekToNext : null,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(
-                              minWidth: 40,
-                              minHeight: 40,
-                            ),
-                          ),
-                        ],
+                      _MiniIconButton(
+                        icon: PhosphorIconsBold.skipBack,
+                        onPressed:
+                            ctrl.isReady ? ctrl.player.seekToPrevious : null,
                       ),
-
-                      // Close button
+                      _MiniIconButton(
+                        icon:
+                            isPlaying &&
+                                    processingState != ProcessingState.buffering
+                                ? PhosphorIconsBold.pause
+                                : PhosphorIconsBold.play,
+                        size: 24,
+                        onPressed:
+                            ctrl.isReady
+                                ? () =>
+                                    isPlaying
+                                        ? ctrl.player.pause()
+                                        : ctrl.play()
+                                : null,
+                      ),
+                      _MiniIconButton(
+                        icon: PhosphorIconsBold.skipForward,
+                        onPressed: ctrl.isReady ? ctrl.player.seekToNext : null,
+                      ),
                       if (onTap != null)
-                        IconButton(
-                          icon: const Icon(
-                            PhosphorIconsBold.x,
-                            color: kColorOn,
-                            size: 16,
-                          ),
-                          onPressed: () => ctrl.stop(),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(
-                            minWidth: 32,
-                            minHeight: 32,
-                          ),
+                        _MiniIconButton(
+                          icon: PhosphorIconsBold.x,
+                          size: 16,
+                          width: 34,
+                          onPressed: ctrl.stop,
                         ),
                     ],
                   ),
@@ -184,6 +161,26 @@ class MiniPlayer extends StatelessWidget {
   }
 }
 
-extension on PlayerController {
-  pause() {}
+class _MiniIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final double size;
+  final double width;
+
+  const _MiniIconButton({
+    required this.icon,
+    required this.onPressed,
+    this.size = 20,
+    this.width = 40,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(icon, color: kColorOn, size: size),
+      onPressed: onPressed,
+      padding: EdgeInsets.zero,
+      constraints: BoxConstraints(minWidth: width, minHeight: 44),
+    );
+  }
 }

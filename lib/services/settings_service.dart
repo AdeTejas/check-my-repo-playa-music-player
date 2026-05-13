@@ -12,16 +12,18 @@ class SettingsService extends ChangeNotifier {
   static const String themeNeon = 'neon';
   static const String themeAlbumArt = 'albumArt';
 
-  // Color Palette - Expanse/Sci-Fi Inspired with Vibrant Accents
+  // Color Palette - saturated accents tuned for the matte dark UI.
   static const Map<String, int> colorPresets = {
-    'Coruscant Cyan': 0xFF00E5FF, // Bright cyan metallic
-    'Eros Gold': 0xFFFFD700, // Rich warm gold
-    'Ceres Purple': 0xFF9D4EDD, // Deep mystic purple
-    'Tycho Station Blue': 0xFF0095FF, // Electric blue
-    'Ganymede Magenta': 0xFFFF00FF, // Hot magenta
-    'Vesta Red': 0xFFFF4444, // Vibrant red
-    'Ilus Green': 0xFF00FF88, // Neon green
-    'Laconia Violet': 0xFF7B68EE, // Medium blue-violet
+    'Imperial Red': 0xFFE21B2D,
+    'Darth Vader Black': 0xFF050508,
+    'Beskar Teal': 0xFF008C99,
+    'Sith Crimson': 0xFFB11226,
+    'Tatooine Amber': 0xFFE08A14,
+    'Jedi Green': 0xFF00A862,
+    'Hoth Blue': 0xFF2384C6,
+    'Mace Violet': 0xFF7432A8,
+    'Mustafar Ember': 0xFFE1461F,
+    'Imperial Indigo': 0xFF263FA8,
   };
 
   SettingsService._();
@@ -44,7 +46,7 @@ class SettingsService extends ChangeNotifier {
   int _sleepFadeSeconds = 10;
   bool _replayGainEnabled = false;
   bool _smartVolumeLimiterEnabled = false;
-  int _accentColor = 0xFF00E5FF; // Default Coruscant-inspired (cyan metallic)
+  int _accentColor = 0xFFE21B2D;
   String _themeMode = themeClassic;
 
   // Turntable settings
@@ -83,9 +85,9 @@ class SettingsService extends ChangeNotifier {
   ];
 
   // Theme customization colors
-  int _glowColor = 0xFF00E5FF; // Default cyan glow
-  int _vinylColor = 0xFF1A1A1A; // Default dark vinyl
-  int _plinthColor = 0xFF2A2A2A; // Default dark plinth
+  int _glowColor = 0xFFE21B2D; // Default imperial red glow
+  int _vinylColor = 0xFF07070A; // Vader-black vinyl
+  int _plinthColor = 0xFF11131A; // Deep saturated plinth
 
   bool get batterySaver => _batterySaver;
   bool get lowPerformanceMode => _lowPerformanceMode;
@@ -149,7 +151,14 @@ class SettingsService extends ChangeNotifier {
     _replayGainEnabled = _prefs.getBool('replayGainEnabled') ?? false;
     _smartVolumeLimiterEnabled =
         _prefs.getBool('smartVolumeLimiterEnabled') ?? false;
-    _accentColor = _prefs.getInt('accentColor') ?? 0xFF00E5FF;
+    final savedAccentColor = _prefs.getInt('accentColor');
+    _accentColor = savedAccentColor ?? 0xFFE21B2D;
+    if (_accentColor == 0xFF00E5FF ||
+        _accentColor == 0xFF00B8D9 ||
+        _accentColor == 0xFF007A8A) {
+      _accentColor = 0xFFE21B2D;
+      await _prefs.setInt('accentColor', _accentColor);
+    }
     _themeMode = _prefs.getString('themeMode') ?? themeClassic;
 
     _turntablePerfTier = (_prefs.getInt('turntablePerfTier') ?? 2).clamp(0, 2);
@@ -167,7 +176,8 @@ class SettingsService extends ChangeNotifier {
     _windowsScanExtensions =
         _prefs.getStringList('windowsScanExtensions') ?? _windowsScanExtensions;
 
-    _controlChipOrder = _prefs.getStringList('controlChipOrder') ??
+    _controlChipOrder =
+        _prefs.getStringList('controlChipOrder') ??
         const <String>[
           'shuffle',
           'repeat',
@@ -177,9 +187,16 @@ class SettingsService extends ChangeNotifier {
           'bookmark',
           'lyrics',
         ];
-    _glowColor = _prefs.getInt('glowColor') ?? 0xFF00E5FF;
-    _vinylColor = _prefs.getInt('vinylColor') ?? 0xFF1A1A1A;
-    _plinthColor = _prefs.getInt('plinthColor') ?? 0xFF2A2A2A;
+    final savedGlowColor = _prefs.getInt('glowColor');
+    _glowColor = savedGlowColor ?? 0xFFE21B2D;
+    if (_glowColor == 0xFF00E5FF ||
+        _glowColor == 0xFF00B8D9 ||
+        _glowColor == 0xFF007A8A) {
+      _glowColor = 0xFFE21B2D;
+      await _prefs.setInt('glowColor', _glowColor);
+    }
+    _vinylColor = _prefs.getInt('vinylColor') ?? 0xFF07070A;
+    _plinthColor = _prefs.getInt('plinthColor') ?? 0xFF11131A;
 
     // Check for low performance mode preference, or auto-detect if not set
     if (_prefs.containsKey('lowPerformanceMode')) {
@@ -286,9 +303,8 @@ class SettingsService extends ChangeNotifier {
   }
 
   Future<void> setThemeMode(String value) async {
-    final normalized = (value == themeNeon || value == themeAlbumArt)
-        ? value
-        : themeClassic;
+    final normalized =
+        (value == themeNeon || value == themeAlbumArt) ? value : themeClassic;
     _themeMode = normalized;
     await _prefs.setString('themeMode', normalized);
     notifyListeners();

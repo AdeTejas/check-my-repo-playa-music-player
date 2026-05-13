@@ -15,14 +15,7 @@ class WindowsAudioQuery {
   Set<String> _audioExtensionsFromSettings() {
     final exts = SettingsService.instance.windowsScanExtensions;
     if (exts.isEmpty) {
-      return {
-        '.mp3',
-        '.m4a',
-        '.aac',
-        '.wav',
-        '.flac',
-        '.wma',
-      };
+      return {'.mp3', '.m4a', '.aac', '.wav', '.flac', '.wma'};
     }
     return exts
         .map((e) => e.startsWith('.') ? e.toLowerCase() : '.${e.toLowerCase()}')

@@ -71,12 +71,18 @@ class SonicDnaService {
       final dna = await SonicDnaTagReader.readFromFilePath(pathOrUri);
       double? bpm = dna.bpm;
       String? key = dna.key;
+      var source = (bpm != null || key != null) ? 'tag' : null;
+      var confidence = source == 'tag' ? 1.0 : null;
 
       // 2) Android fallback: decode PCM + analyze when tags are missing
       if ((bpm == null && key == null) && Platform.isAndroid) {
         final r = await SonicDnaAndroidAnalyzer.analyze(pathOrUri);
         bpm = r.bpm;
         key = r.key;
+        if (bpm != null || key != null) {
+          source = 'analysis';
+          confidence = r.confidence.clamp(0.0, 1.0);
+        }
       }
 
       if (bpm != null || key != null) {
@@ -85,11 +91,20 @@ class SonicDnaService {
           bpm: bpm,
           key: key,
           dnaSignature: sig,
+          source: source,
+          confidence: confidence,
         );
         // Keep local cache warm to avoid re-querying later in the loop.
-        metaById[song.id.toString()] = (meta ??
-                SongMetadata(id: song.id.toString()))
-            .copyWith(bpm: bpm, key: key, dnaSignature: sig);
+        metaById[song.id.toString()] =
+            (meta ?? SongMetadata(id: song.id.toString())).copyWith(
+              bpm: bpm,
+              key: key,
+              dnaSignature: sig,
+              bpmSource: source != null && bpm != null ? source : null,
+              bpmConfidence:
+                  confidence != null && bpm != null ? confidence : null,
+              keySource: source != null && key != null ? source : null,
+            );
       }
 
       processed++;

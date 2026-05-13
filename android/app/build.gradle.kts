@@ -6,18 +6,19 @@ plugins {
 }
 
 import java.util.Properties
+import org.gradle.api.GradleException
+
+val keyProperties = Properties()
+val keyPropertiesFile = rootProject.file("key.properties")
+val hasReleaseSigning = keyPropertiesFile.exists()
+if (hasReleaseSigning) {
+    keyPropertiesFile.inputStream().use { keyProperties.load(it) }
+}
 
 android {
     namespace = "com.paxpiece.playa"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "27.0.12077973"
-
-    val keyProperties = Properties()
-    val keyPropertiesFile = rootProject.file("key.properties")
-    val hasReleaseSigning = keyPropertiesFile.exists()
-    if (hasReleaseSigning) {
-        keyPropertiesFile.inputStream().use { keyProperties.load(it) }
-    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
@@ -54,15 +55,23 @@ android {
 
     buildTypes {
         release {
-            // For Play Store uploads you MUST provide a real upload keystore in android/key.properties.
-            // If missing, we fall back to debug signing so local `flutter run --release` keeps working.
-            signingConfig = if (hasReleaseSigning) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
             }
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
         }
+    }
+}
+
+gradle.taskGraph.whenReady {
+    val releaseTaskRequested = allTasks.any {
+        it.name in setOf("assembleRelease", "bundleRelease", "packageReleaseBundle")
+    }
+    if (releaseTaskRequested && !hasReleaseSigning) {
+        throw GradleException(
+            "Release signing is not configured. Copy android/key.properties.example " +
+                "to android/key.properties and fill in your Play upload keystore details."
+        )
     }
 }
 

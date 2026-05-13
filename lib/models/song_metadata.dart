@@ -9,6 +9,10 @@ class SongMetadata {
   final double? bpm;
   final String? key;
   final String? dnaSignature;
+  final String? bpmSource;
+  final double? bpmConfidence;
+  final String? keySource;
+  final bool isManualDna;
 
   const SongMetadata({
     required this.id,
@@ -19,6 +23,10 @@ class SongMetadata {
     this.bpm,
     this.key,
     this.dnaSignature,
+    this.bpmSource,
+    this.bpmConfidence,
+    this.keySource,
+    this.isManualDna = false,
   });
 
   SongMetadata copyWith({
@@ -29,6 +37,10 @@ class SongMetadata {
     double? bpm,
     String? key,
     String? dnaSignature,
+    String? bpmSource,
+    double? bpmConfidence,
+    String? keySource,
+    bool? isManualDna,
   }) {
     return SongMetadata(
       id: id,
@@ -39,6 +51,10 @@ class SongMetadata {
       bpm: bpm ?? this.bpm,
       key: key ?? this.key,
       dnaSignature: dnaSignature ?? this.dnaSignature,
+      bpmSource: bpmSource ?? this.bpmSource,
+      bpmConfidence: bpmConfidence ?? this.bpmConfidence,
+      keySource: keySource ?? this.keySource,
+      isManualDna: isManualDna ?? this.isManualDna,
     );
   }
 
@@ -52,10 +68,19 @@ class SongMetadata {
       'bpm': bpm,
       'key': key,
       'dnaSignature': dnaSignature,
+      'bpmSource': bpmSource,
+      'bpmConfidence': bpmConfidence,
+      'keySource': keySource,
+      'isManualDna': isManualDna,
     };
   }
 
   factory SongMetadata.fromMap(Map<String, dynamic> map) {
+    double? asDouble(Object? value) {
+      if (value is num) return value.toDouble();
+      return null;
+    }
+
     return SongMetadata(
       id: map['id'] as String,
       rating: map['rating'] as int?,
@@ -65,9 +90,13 @@ class SongMetadata {
           map['lastPlayed'] != null
               ? DateTime.tryParse(map['lastPlayed'] as String)
               : null,
-      bpm: map['bpm'] as double?,
+      bpm: asDouble(map['bpm']),
       key: map['key'] as String?,
       dnaSignature: map['dnaSignature'] as String?,
+      bpmSource: map['bpmSource'] as String?,
+      bpmConfidence: asDouble(map['bpmConfidence']),
+      keySource: map['keySource'] as String?,
+      isManualDna: (map['isManualDna'] as bool?) ?? false,
     );
   }
 
