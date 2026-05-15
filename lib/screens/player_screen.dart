@@ -56,70 +56,44 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final ctrl = PlayerProvider.of(context);
     final p = ctrl.player;
 
-    final topInset = MediaQuery.paddingOf(context).top;
-
-    return Stack(
-      children: [
-        SafeArea(
-          top: false,
-          bottom: false,
-          child: AnimatedBuilder(
-            animation: SettingsService.instance,
+    return SafeArea(
+      top: false,
+      bottom: false,
+      child: AnimatedBuilder(
+        animation: SettingsService.instance,
+        builder: (context, _) {
+          return StreamBuilder<SequenceState?>(
+            stream: p.sequenceStateStream,
             builder: (context, _) {
-              return StreamBuilder<SequenceState?>(
-                stream: p.sequenceStateStream,
+              final tag = ctrl.currentMediaItem;
+              return StreamBuilder<PlayerState>(
+                stream: p.playerStateStream,
                 builder: (context, _) {
-                  final tag = ctrl.currentMediaItem;
-                  return StreamBuilder<PlayerState>(
-                    stream: p.playerStateStream,
-                    builder: (context, _) {
-                      return LayoutBuilder(
-                        builder: (context, constraints) {
-                          final orientation = MediaQuery.orientationOf(context);
-                          if (orientation == Orientation.landscape &&
-                              constraints.maxWidth >= 780) {
-                            return _NowPlayingLandscape(
-                              ctrl: ctrl,
-                              item: tag,
-                              isVisible: widget.isVisible,
-                            );
-                          } else {
-                            return _NowPlayingPortrait(
-                              ctrl: ctrl,
-                              item: tag,
-                              isVisible: widget.isVisible,
-                            );
-                          }
-                        },
-                      );
+                  return LayoutBuilder(
+                    builder: (context, constraints) {
+                      final orientation = MediaQuery.orientationOf(context);
+                      if (orientation == Orientation.landscape &&
+                          constraints.maxWidth >= 780) {
+                        return _NowPlayingLandscape(
+                          ctrl: ctrl,
+                          item: tag,
+                          isVisible: widget.isVisible,
+                        );
+                      } else {
+                        return _NowPlayingPortrait(
+                          ctrl: ctrl,
+                          item: tag,
+                          isVisible: widget.isVisible,
+                        );
+                      }
                     },
                   );
                 },
               );
             },
-          ),
-        ),
-        Positioned(
-          left: 0,
-          right: 0,
-          top: 0,
-          child: IgnorePointer(
-            child: Container(
-              height: topInset + kSp * 2.0,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    kColorBg.withValues(alpha: 0.72),
-                    kColorBg.withValues(alpha: 0.0),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
+          );
+        },
+      ),
     );
   }
 }
@@ -173,7 +147,7 @@ class _NowPlayingPortrait extends StatelessWidget {
                   ),
                 ),
               ),
-              SizedBox(height: tight ? kSp * 0.5 : kSp),
+              SizedBox(height: tight ? kSp * 0.85 : kSp * 1.35),
               Expanded(
                 child: Padding(
                   padding: EdgeInsets.only(bottom: tight ? kSp * 0.25 : kSp),
@@ -186,18 +160,18 @@ class _NowPlayingPortrait extends StatelessWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            _TrackInfoPanel(
-                              item: item,
-                              playerCtrl: ctrl,
-                              compact: true,
-                            ),
-                            const SizedBox(height: 6),
                             _RocinanteProgress(
                               item: item,
                               player: ctrl.player,
                               compact: true,
                             ),
-                            const SizedBox(height: 5),
+                            const SizedBox(height: 8),
+                            _TrackInfoPanel(
+                              item: item,
+                              playerCtrl: ctrl,
+                              compact: true,
+                            ),
+                            const SizedBox(height: 7),
                             _TransportBar(ctrl: ctrl, compact: true),
                             const SizedBox(height: 5),
                             _SecondaryControls(ctrl: ctrl, compact: true),
@@ -255,10 +229,10 @@ class _NowPlayingLandscape extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _TrackInfoPanel(item: item, playerCtrl: ctrl, compact: true),
-                  const SizedBox(height: kSp * 0.5),
                   _RocinanteProgress(item: item, player: ctrl.player),
-                  const SizedBox(height: kSp * 0.5),
+                  const SizedBox(height: kSp * 0.75),
+                  _TrackInfoPanel(item: item, playerCtrl: ctrl, compact: true),
+                  const SizedBox(height: kSp * 0.75),
                   _TransportBar(ctrl: ctrl),
                   const SizedBox(height: kSp * 0.5),
                   _SecondaryControls(ctrl: ctrl, compact: true),
@@ -288,7 +262,7 @@ class _NowPlayingSurface extends StatelessWidget {
       backgroundColor: kColorGlassClear,
       padding: EdgeInsets.symmetric(
         horizontal: compact ? kSp * 0.85 : kSp * 1.5,
-        vertical: compact ? kSp * 0.65 : kSp * 1.15,
+        vertical: compact ? kSp * 0.8 : kSp * 1.25,
       ),
       child: child,
     );
@@ -309,12 +283,14 @@ class _RocinanteProgress extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final path = item?.extras?['path'];
+    final height = compact ? 64.0 : 78.0;
+
     if (item == null || path is! String || path.isEmpty) {
-      return SizedBox(height: compact ? 46 : 52);
+      return SizedBox(height: height);
     }
 
     return SizedBox(
-      height: compact ? 46 : 52,
+      height: height,
       child: WaveformWidget(
         path: path,
         player: player,
@@ -918,27 +894,277 @@ class _TrackInfoPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(
-          item?.title ?? '—',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: compact ? 15 : kTextLg,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            SizedBox(width: compact ? 34 : 38),
+            Expanded(
+              child: _MarqueeText(
+                text: item?.title ?? '—',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: compact ? 18 : 23,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0,
+                  height: 1.08,
+                ),
+              ),
+            ),
+            _FavoriteButton(item: item, playerCtrl: playerCtrl),
+          ],
+        ),
+        SizedBox(height: compact ? 5 : 7),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 40),
+          child: Text(
+            item?.artist ?? 'Unknown Artist',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: kColorOn2.withValues(alpha: 0.88),
+              fontSize: compact ? 12.5 : 15,
+              fontWeight: FontWeight.w500,
+              height: 1.15,
+            ),
           ),
         ),
-        SizedBox(height: compact ? 2 : 3),
-        Text(
-          item?.artist ?? 'Unknown',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: TextStyle(color: kColorOn2, fontSize: compact ? 11 : kTextSm),
-        ),
+        SizedBox(height: compact ? 3 : 5),
         if (!compact && item != null) _SonicDnaBadge(songId: item!.id),
       ],
+    );
+  }
+}
+
+class _MarqueeText extends StatefulWidget {
+  final String text;
+  final TextStyle style;
+  final TextAlign textAlign;
+
+  const _MarqueeText({
+    required this.text,
+    required this.style,
+    this.textAlign = TextAlign.start,
+  });
+
+  @override
+  State<_MarqueeText> createState() => _MarqueeTextState();
+}
+
+class _MarqueeTextState extends State<_MarqueeText>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this);
+  }
+
+  @override
+  void didUpdateWidget(covariant _MarqueeText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      _controller.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _configureAnimation({
+    required bool shouldScroll,
+    required Duration duration,
+  }) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!shouldScroll) {
+        _controller.stop();
+        _controller.value = 0;
+        return;
+      }
+
+      if (_controller.duration != duration) {
+        _controller.duration = duration;
+      }
+      if (!_controller.isAnimating) {
+        _controller.repeat();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        final textDirection = Directionality.of(context);
+        final painter = TextPainter(
+          text: TextSpan(text: widget.text, style: widget.style),
+          maxLines: 1,
+          textDirection: textDirection,
+        )..layout();
+
+        if (maxWidth <= 0 || painter.width <= maxWidth) {
+          _configureAnimation(
+            shouldScroll: false,
+            duration: const Duration(milliseconds: 1),
+          );
+          return Text(
+            widget.text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
+            textAlign: widget.textAlign,
+            style: widget.style,
+          );
+        }
+
+        const gap = 48.0;
+        final travel = painter.width + gap;
+        final duration = Duration(
+          milliseconds: (travel * 42).round().clamp(5200, 18000),
+        );
+        _configureAnimation(shouldScroll: true, duration: duration);
+
+        Widget titleText() {
+          return Text(
+            widget.text,
+            maxLines: 1,
+            overflow: TextOverflow.visible,
+            softWrap: false,
+            style: widget.style,
+          );
+        }
+
+        return ClipRect(
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) {
+              return SizedBox(
+                width: maxWidth,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned(
+                      left: -_controller.value * travel,
+                      top: 0,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          titleText(),
+                          const SizedBox(width: gap),
+                          ExcludeSemantics(child: titleText()),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _FavoriteButton extends StatelessWidget {
+  final MediaItem? item;
+  final PlayerController playerCtrl;
+
+  const _FavoriteButton({required this.item, required this.playerCtrl});
+
+  @override
+  Widget build(BuildContext context) {
+    final id = item?.id;
+    final enabled = id != null && id.isNotEmpty;
+
+    return ValueListenableBuilder<List<String>>(
+      valueListenable: playerCtrl.favoritesNotifier,
+      builder: (context, favorites, _) {
+        final isFavorite = enabled && favorites.contains(id);
+
+        return Semantics(
+          label: isFavorite ? 'Remove from favorites' : 'Add to favorites',
+          button: true,
+          child: TweenAnimationBuilder<double>(
+            key: ValueKey(isFavorite),
+            tween: Tween(begin: isFavorite ? 0.0 : 1.0, end: 1.0),
+            duration: const Duration(milliseconds: 360),
+            curve: Curves.easeOutBack,
+            builder: (context, pulse, child) {
+              final scale = isFavorite ? 0.88 + (0.12 * pulse) : 1.0;
+              final glow = isFavorite ? pulse : 0.0;
+
+              return Transform.scale(
+                scale: scale,
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color:
+                        isFavorite
+                            ? Colors.redAccent.withValues(alpha: 0.14)
+                            : Colors.white.withValues(alpha: 0.045),
+                    border: Border.all(
+                      color:
+                          isFavorite
+                              ? Colors.redAccent.withValues(alpha: 0.62)
+                              : Colors.white.withValues(alpha: 0.12),
+                    ),
+                    boxShadow:
+                        isFavorite
+                            ? [
+                              BoxShadow(
+                                color: Colors.redAccent.withValues(
+                                  alpha: 0.24 * glow,
+                                ),
+                                blurRadius: 16,
+                                spreadRadius: -2,
+                              ),
+                            ]
+                            : null,
+                  ),
+                  child: IconButton(
+                    tooltip: isFavorite ? 'Favorited' : 'Favorite',
+                    onPressed:
+                        enabled
+                            ? () async {
+                              await playerCtrl.toggleFavorite(id);
+                              HapticFeedback.selectionClick();
+                            }
+                            : null,
+                    icon: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 220),
+                      transitionBuilder:
+                          (child, animation) => ScaleTransition(
+                            scale: animation,
+                            child: FadeTransition(
+                              opacity: animation,
+                              child: child,
+                            ),
+                          ),
+                      child: PhosphorIcon(
+                        isFavorite
+                            ? PhosphorIconsFill.heart
+                            : PhosphorIconsRegular.heart,
+                        key: ValueKey(isFavorite),
+                        size: 20,
+                        color: isFavorite ? Colors.redAccent : kColorOn2,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }

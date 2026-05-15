@@ -408,7 +408,8 @@ class PreciseWaveformPainter extends CustomPainter {
     // Clip to the tail of the ship so waveform appears to come out of the engine
     canvas.clipRect(Rect.fromLTWH(0, 0, tailX, size.height));
 
-    // Engine plume behind the ship (separate from the waveform, like exhaust)
+    // Engine plume and waveform share the same wake, so the ship feels like it
+    // is pulling the track through space instead of riding over a separate line.
     _drawEnginePlume(
       canvas: canvas,
       nozzleX: tailX,
@@ -419,10 +420,22 @@ class PreciseWaveformPainter extends CustomPainter {
       beatStrength: beatStrength,
     );
 
+    final transitionWidth = shipLen * 1.5;
+    _drawWaveformFold(
+      canvas: canvas,
+      waveformPath: path,
+      nozzleX: tailX,
+      centerY: centerY,
+      foldLength: transitionWidth,
+      height: size.height,
+      baseColor: playedColor,
+      t: timeSeconds,
+      beatStrength: beatStrength,
+    );
+
     // 1. Unified Plasma-to-Track Gradient (The "Merge")
     // The waveform starts as hot white plasma, cools to cyan, then becomes the track color.
     // We match the transition width to the plume length for visual consistency.
-    final transitionWidth = shipLen * 1.5;
 
     // Compute safe gradient endpoints (keep within canvas bounds)
     final gradStartX = tailX.clamp(0.0, width);
@@ -514,6 +527,70 @@ class PreciseWaveformPainter extends CustomPainter {
     final cycle = 60.0 / effectiveBpm;
     final phase = (timeSeconds % cycle) / cycle;
     return 0.35 + 0.65 * ((cos(2 * pi * phase) + 1.0) / 2.0);
+  }
+
+  void _drawWaveformFold({
+    required Canvas canvas,
+    required Path waveformPath,
+    required double nozzleX,
+    required double centerY,
+    required double foldLength,
+    required double height,
+    required Color baseColor,
+    required double t,
+    required double beatStrength,
+  }) {
+    if (nozzleX <= 0) return;
+
+    final len = min(foldLength * 0.72, nozzleX);
+    if (len <= 1) return;
+
+    canvas.save();
+    canvas.clipPath(waveformPath);
+
+    final foldPaint =
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..blendMode = BlendMode.plus
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
+
+    for (int i = 0; i < 4; i++) {
+      final layer = i / 3.0;
+      final phase = t * (2.4 + i * 0.42) + i * 1.7;
+      final wave = sin(phase) * height * (0.035 + layer * 0.018);
+      final yOffset = (layer - 0.5) * height * 0.22;
+      final start = Offset(nozzleX, centerY + yOffset * 0.28);
+      final end = Offset(
+        nozzleX - len * (0.72 + layer * 0.18),
+        centerY + yOffset,
+      );
+
+      final foldPath =
+          Path()
+            ..moveTo(start.dx, start.dy)
+            ..cubicTo(
+              nozzleX - len * 0.18,
+              centerY + yOffset * 0.15 + wave,
+              nozzleX - len * 0.42,
+              centerY + yOffset * 0.78 - wave * 0.55,
+              end.dx,
+              end.dy,
+            );
+
+      foldPaint
+        ..strokeWidth = height * (0.10 - i * 0.016)
+        ..color = Color.lerp(
+          Colors.white,
+          baseColor,
+          0.35 + layer * 0.40,
+        )!.withValues(
+          alpha: (0.18 + beatStrength * 0.20) * (1.0 - layer * 0.12),
+        );
+      canvas.drawPath(foldPath, foldPaint);
+    }
+
+    canvas.restore();
   }
 
   void _drawEnginePlume({
