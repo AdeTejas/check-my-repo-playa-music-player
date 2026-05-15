@@ -363,8 +363,8 @@ class _DeepSpaceBackgroundState extends State<DeepSpaceBackground>
         // Two-style mix:
         // - Frequent but subtle streaks
         // - Rare but bigger cinematic events
-        const subtleRatePerSecond = 0.22; // mostly slow flybys
-        const cinematicRatePerSecond = 0.020; // occasional fast HDR streak
+        const subtleRatePerSecond = 0.18; // mostly slow flybys
+        const cinematicRatePerSecond = 0.014; // occasional heavy HDR streak
 
         if (_rnd.nextDouble() < subtleRatePerSecond * dt) {
           _spawnShootingStar(style: _CometStyle.subtle);
@@ -421,18 +421,17 @@ class _DeepSpaceBackgroundState extends State<DeepSpaceBackground>
         break;
     }
 
-    // Base speed (px/s)
-    // Subtle comets skew slower so they stay visible longer.
-    // Cinematic comets keep a wider speed range but are rarer.
+    // Base speed (px/s). Keep the upper bound restrained so the comets read
+    // as heavy objects crossing the scene instead of quick, weak streaks.
     late final double baseSpeedPxPerSec;
     if (style == _CometStyle.subtle) {
-      const minSpeed = 120.0;
-      const maxSpeed = 980.0;
-      final t = pow(_rnd.nextDouble(), 3.0).toDouble();
+      const minSpeed = 105.0;
+      const maxSpeed = 620.0;
+      final t = pow(_rnd.nextDouble(), 2.4).toDouble();
       baseSpeedPxPerSec = minSpeed + (maxSpeed - minSpeed) * t;
     } else {
-      const minSpeed = 760.0;
-      const maxSpeed = 1105.0;
+      const minSpeed = 520.0;
+      const maxSpeed = 780.0;
       baseSpeedPxPerSec = minSpeed + _rnd.nextDouble() * (maxSpeed - minSpeed);
     }
 
@@ -1044,7 +1043,7 @@ class _StarFieldPainter extends CustomPainter {
         final start = Offset(s.x * w, s.y * h);
         final perp = Offset(cos(s.angle + pi / 2), sin(s.angle + pi / 2));
         final cinematic = s.style == _CometStyle.cinematic;
-        final speedFactor = (s.speedPxPerSec / 800.0).clamp(0.55, 1.45);
+        final speedFactor = (s.speedPxPerSec / 620.0).clamp(0.72, 1.18);
         final baseTail =
             min(w, h) *
             0.28 *

@@ -48,6 +48,7 @@ class _TurntableDeckState extends State<TurntableDeck>
   double _dragVelocity = 0.0;
   bool _isDragging = false;
   bool _isDraggingArm = false;
+  bool _isDraggingRpmSwitch = false;
   double? _lastDragAngle;
   Duration? _dragPosition;
   int _lastSeekAtMs = 0;
@@ -582,7 +583,7 @@ class _TurntableDeckState extends State<TurntableDeck>
     } else {}
 
     // 1) Motor model: separate accel / brake, plus tiny wow/flutter drift.
-    final rpmMult = _is33RPM ? 1.0 : 1.35;
+    final rpmMult = _rpmMultiplier();
     final baseTarget = _targetVelocity * _pitchValue * rpmMult;
 
     final seconds = elapsed.inMicroseconds / 1e6;
@@ -729,13 +730,48 @@ class _TurntableDeckState extends State<TurntableDeck>
     return (p - proj).distance;
   }
 
+  double _rpmMultiplier() => _is33RPM ? 1.0 : 1.35;
+
+  Future<void> _syncPlaybackSpeedToTurntable() async {
+    await widget.ctrl.setSpeed(_pitchValue * _rpmMultiplier());
+  }
+
+  void _toggleCueLever() {
+    if (_cueMoving) return;
+    final isPlaying = widget.ctrl.player.playing;
+    final goingDown = _cueTarget >= 0.5;
+    setState(() {
+      _cueTarget = goingDown ? 0.0 : 1.0;
+      _cueMoving = true;
+      _pendingPlayAfterCue = goingDown && !isPlaying;
+      _pendingPauseAfterCue = (!goingDown) && isPlaying;
+    });
+    HapticFeedback.selectionClick();
+  }
+
+  void _applyRpmMode(bool use33) {
+    if (_is33RPM == use33) return;
+    setState(() => _is33RPM = use33);
+    _syncPlaybackSpeedToTurntable();
+    HapticFeedback.selectionClick();
+  }
+
+  void _setRpmFromLocalPosition(Offset local, Size size) {
+    final rpmCenterX = size.width * 0.60;
+    _applyRpmMode(local.dx <= rpmCenterX);
+  }
+
+  void _toggleRpmSwitch() {
+    _applyRpmMode(!_is33RPM);
+  }
+
   void _handlePanStart(DragStartDetails details) {
     if (_cueMoving) return;
     final settings = SettingsService.instance;
     final box = context.findRenderObject() as RenderBox;
     final w = box.size.width;
     final h = box.size.height;
-    final local = box.globalToLocal(details.globalPosition);
+    final local = details.localPosition;
 
     // Control hitboxes should not start a record drag.
     final knobCenter = Offset(w * 0.12, h * 0.88);
@@ -753,17 +789,24 @@ class _TurntableDeckState extends State<TurntableDeck>
 
     final leverRect = Rect.fromCenter(
       center: Offset(w * 0.24, h * 0.88),
-      width: w * 0.12,
-      height: w * 0.12,
+      width: w * 0.16,
+      height: w * 0.16,
     );
-    if (leverRect.contains(local)) return;
+    if (leverRect.contains(local)) {
+      _toggleCueLever();
+      return;
+    }
 
     final rpmRect = Rect.fromCenter(
       center: Offset(w * 0.60, h * 0.88),
-      width: w * 0.12,
-      height: w * 0.08,
+      width: w * 0.16,
+      height: w * 0.12,
     );
-    if (rpmRect.contains(local)) return;
+    if (rpmRect.contains(local)) {
+      _isDraggingRpmSwitch = true;
+      HapticFeedback.selectionClick();
+      return;
+    }
 
     // Tonearm hit test (manual needle drop)
     if (settings.turntableNeedleDropEnabled) {
@@ -817,7 +860,12 @@ class _TurntableDeckState extends State<TurntableDeck>
     if (_cueMoving && !_isDraggingArm) return;
     final settings = SettingsService.instance;
     final box = context.findRenderObject() as RenderBox;
-    final local = box.globalToLocal(details.globalPosition);
+    final local = details.localPosition;
+
+    if (_isDraggingRpmSwitch) {
+      _setRpmFromLocalPosition(local, box.size);
+      return;
+    }
 
     if (_isDraggingArm) {
       if (!settings.turntableNeedleDropEnabled) return;
@@ -897,7 +945,7 @@ class _TurntableDeckState extends State<TurntableDeck>
             _lastPitchDetent = null;
           }
         });
-        widget.ctrl.setSpeed(_pitchValue);
+        _syncPlaybackSpeedToTurntable();
       }
       _lastKnobAngle = currentAngle;
       return;
@@ -938,6 +986,11 @@ class _TurntableDeckState extends State<TurntableDeck>
   }
 
   void _handlePanEnd(DragEndDetails details) {
+    if (_isDraggingRpmSwitch) {
+      _isDraggingRpmSwitch = false;
+      return;
+    }
+
     if (_isTurningKnob) {
       _isTurningKnob = false;
       _lastKnobAngle = null;
@@ -997,37 +1050,27 @@ class _TurntableDeckState extends State<TurntableDeck>
     final box = context.findRenderObject() as RenderBox;
     final w = box.size.width;
     final h = box.size.height;
-    final local = box.globalToLocal(details.globalPosition);
+    final local = details.localPosition;
 
     // Lever Hitbox (Moved to Bottom Left, right of Knob)
     final leverRect = Rect.fromCenter(
       center: Offset(w * 0.24, h * 0.88),
-      width: w * 0.12,
-      height: w * 0.12,
+      width: w * 0.16,
+      height: w * 0.16,
     );
     if (leverRect.contains(local)) {
-      // Cue lever: lift/drop tonearm with a timed motion.
-      final isPlaying = widget.ctrl.player.playing;
-      final goingDown = _cueTarget >= 0.5;
-      setState(() {
-        _cueTarget = goingDown ? 0.0 : 1.0;
-        _cueMoving = true;
-        _pendingPlayAfterCue = goingDown && !isPlaying;
-        _pendingPauseAfterCue = (!goingDown) && isPlaying;
-      });
-      HapticFeedback.selectionClick();
+      _toggleCueLever();
       return;
     }
 
     // RPM Hitbox (Moved further left)
     final rpmRect = Rect.fromCenter(
       center: Offset(w * 0.60, h * 0.88),
-      width: w * 0.12,
-      height: w * 0.08,
+      width: w * 0.16,
+      height: w * 0.12,
     );
     if (rpmRect.contains(local)) {
-      setState(() => _is33RPM = !_is33RPM);
-      HapticFeedback.selectionClick();
+      _toggleRpmSwitch();
       return;
     }
   }
@@ -1036,7 +1079,7 @@ class _TurntableDeckState extends State<TurntableDeck>
     final box = context.findRenderObject() as RenderBox;
     final w = box.size.width;
     final h = box.size.height;
-    final local = box.globalToLocal(details.globalPosition);
+    final local = details.localPosition;
 
     // Knob Hit Test (Updated)
     final knobCenter = Offset(w * 0.12, h * 0.88);
@@ -1048,7 +1091,7 @@ class _TurntableDeckState extends State<TurntableDeck>
         _pitchValue = 1.0;
         _lastKnobAngle = null;
       });
-      widget.ctrl.setSpeed(1.0);
+      _syncPlaybackSpeedToTurntable();
       HapticFeedback.heavyImpact();
       _toast('Pitch Reset');
     }
