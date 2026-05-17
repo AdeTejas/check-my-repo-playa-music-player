@@ -966,3 +966,71 @@ class _NavBarItem extends StatelessWidget {
     );
   }
 }
+
+// ==================== QUEUE & BOOKMARKS SHEETS (TOP LEVEL) ====================
+
+class QueueSheet extends StatelessWidget {
+  final PlayerController ctrl;
+  final ScrollController scrollController;
+
+  const QueueSheet({
+    required this.ctrl,
+    required this.scrollController,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 20),
+          Text("Now Playing Queue", style: Theme.of(context).textTheme.titleLarge),
+          const Divider(),
+          Expanded(
+            child: ListView.builder(
+              controller: scrollController,
+              itemCount: ctrl.hasQueue ? 1 : 0, // placeholder
+              itemBuilder: (context, i) => ListTile(
+                title: Text(ctrl.currentMediaItem?.title ?? "No queue"),
+                subtitle: const Text("Queue will appear here"),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class BookmarksSheet extends StatelessWidget {
+  final PlayerController ctrl;
+
+  const BookmarksSheet({required this.ctrl, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 20),
+          Text("Bookmarks", style: Theme.of(context).textTheme.titleLarge),
+          const Divider(),
+          const Expanded(
+            child: Center(
+              child: Text("Bookmarks will appear here", style: TextStyle(color: Colors.white70)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
