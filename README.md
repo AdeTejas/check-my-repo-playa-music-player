@@ -1,18 +1,26 @@
-# Playa - Music & Audiobook Player
+# 🎵 Playa
 
-A beautiful, immersive Flutter-based music and audiobook player with premium visuals and powerful features.
+**A beautiful, immersive music & audiobook player built with Flutter.**
 
-![Playa Screenshot](screenshots/player.png)
+Premium visuals. Powerful features. Designed for people who truly love music.
 
-## ✨ Features
+> **Made with 🔥 in Lagos, Nigeria**
 
-- **Animated Turntable Widget** with realistic spinning
-- **Real-time Waveform** visualization
-- **Native Equalizer** support
-- **Audiobook Bookmarks** & chapter support
-- **Smart Library Scanner**
-- **Deep space / Walnut dark aesthetic**
-- Cross-platform (Android + Windows)
+---
+
+## ✨ Key Features
+
+| Feature                    | Description                                          | Status   |
+|---------------------------|------------------------------------------------------|----------|
+| 🌀 Animated Turntable     | Realistic spinning vinyl with smooth physics         | ✅ Done |
+| 📊 Real-time Waveform     | Dynamic audio waveform visualization                 | ✅ Done |
+| 🎧 Native Equalizer       | System-level equalizer with presets                  | ✅ Done |
+| 📖 Audiobook Support      | Bookmarks, chapters & smart progress tracking        | ✅ Done |
+| 🔍 Smart Library Scanner   | Intelligent organization of music & audiobooks       | ✅ Done |
+| 🌌 Premium Dark Theme     | Deep space / Walnut aesthetic                        | ✅ Done |
+| 📱 Cross-Platform         | Android + Windows (more platforms coming)            | ✅ Done |
+
+---
 
 ## 🚀 Quick Start
 
@@ -23,15 +31,34 @@ flutter pub get
 flutter run
 ```
 
-## 📱 Platforms
-
-- **Android**
-- **Windows**
-
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
+**Requirements:** Flutter SDK + Android Studio / VS Code
 
 ---
 
-Made with 🔥 in Lagos
+## 📱 Supported Platforms
+
+- **Android** (Primary)
+- **Windows** (Primary)
+- iOS, macOS, Linux & Web *(in development)*
+
+---
+
+## 📈 Project Status
+
+Active development. Current focus: Performance, waveform accuracy, and cross-platform stability.
+
+---
+
+## 🔗 Tech Stack
+
+Flutter • Dart • Custom Shaders • SQLite • Platform Channels
+
+---
+
+## 📝 License
+
+MIT License
+
+---
+
+**Made with 🔥 in Lagos**
